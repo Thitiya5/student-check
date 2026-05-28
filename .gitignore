@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+
+# Logs & debug
+*.log
+npm-debug.log*
+
+# Environment (never commit secrets)
+.env
+.env.local
+.env.*.local
+!.env.example
+functions/.env
+
+# Firebase local
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+
+# Vite PWA dev
+dev-dist/
+
+# Editor & OS
+.cursor/
+.DS_Store
+Thumbs.db
+*.sw?
+
+# IDE
+.idea/
+*.suo
+*.user

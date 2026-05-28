@@ -1,0 +1,26 @@
+{
+  "name": "โรงเรียนยางตลาดวิทยาคาร",
+  "short_name": "เช็คชื่อ ยว.",
+  "description": "ระบบเช็คชื่อนักเรียน โรงเรียนยางตลาดวิทยาคาร",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#7C4DFF",
+  "theme_color": "#7C4DFF",
+  "lang": "th",
+  "icons": [
+    {
+      "src": "/assets/school-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/school-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

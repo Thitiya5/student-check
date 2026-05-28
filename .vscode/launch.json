@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "(ภายนอก) เซิร์ฟ dev + เปิด Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:4173/",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "vite-dev"
+    },
+    {
+      "name": "(ภายนอก) เปิด Chrome อย่างเดียว (รัน vite-dev แล้ว)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:4173/",
+      "webRoot": "${workspaceFolder}"
+    }
+  ]
+}

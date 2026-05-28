@@ -1,0 +1,163 @@
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --bg-page: #e8e4ff;
+  --bg-gradient-mid: #f4f2ff;
+  --bg-page-end: #f8f7ff;
+  --bg-glow-a: rgba(168, 85, 255, 0.35);
+  --bg-glow-b: rgba(76, 64, 255, 0.28);
+
+  --card-bg: #ffffff;
+  --card-bg-soft: rgba(255, 255, 255, 0.94);
+  --card-bg-muted: rgba(255, 255, 255, 0.72);
+  --surface: #ffffff;
+  --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-glass-strong: rgba(255, 255, 255, 0.88);
+  --glass-start: rgba(255, 255, 255, 0.94);
+  --glass-end: rgba(255, 255, 255, 0.78);
+  --glass-card-start: rgba(255, 255, 255, 0.92);
+  --glass-card-end: rgba(255, 255, 255, 0.68);
+
+  --text: #1c1535;
+  --text-secondary: rgba(28, 21, 53, 0.68);
+  --text-muted: rgba(28, 21, 53, 0.54);
+
+  /* Balanced label / value / title — same visual weight across pages */
+  --type-label-size: 0.875rem;
+  --type-label-weight: 550;
+  --type-value-size: 0.875rem;
+  --type-value-weight: 600;
+  --type-title-size: 1rem;
+  --type-title-weight: 650;
+  --border-soft: rgba(255, 255, 255, 0.55);
+  --border-glass: rgba(108, 99, 255, 0.14);
+
+  --shadow-soft: 0 18px 48px rgba(76, 42, 180, 0.12);
+  --shadow-float: 0 24px 64px rgba(58, 32, 120, 0.18);
+  --shadow-chip: 0 8px 24px rgba(108, 99, 255, 0.1);
+
+  --purple-900: #2d2060;
+  --purple-700: #4f39a3;
+  --primary: #7c4dff;
+  --primary-mid: #8b63ff;
+  --primary-soft: #b892ff;
+  --accent: #7c4dff;
+  --accent-secondary: #b892ff;
+  --accent-hot: #a855ff;
+
+  --success: #22c574;
+  --warning: #f5b942;
+  --danger: #ff4d67;
+  --info: #3b82f6;
+
+  --input-bg: rgba(255, 255, 255, 0.86);
+  --input-border: rgba(108, 76, 255, 0.18);
+  --sheet-bg: rgba(255, 255, 255, 0.55);
+  --sheet-border: rgba(255, 255, 255, 0.65);
+  --segmented-bg: rgba(255, 255, 255, 0.65);
+  --segmented-border: rgba(108, 76, 255, 0.14);
+  --mini-stat-bg: rgba(255, 255, 255, 0.7);
+  --student-card-start: rgba(255, 255, 255, 0.97);
+  --student-card-end: rgba(250, 248, 255, 0.92);
+  --status-btn-bg: rgba(108, 76, 255, 0.06);
+  --status-btn-selected: linear-gradient(155deg, rgba(108, 76, 255, 0.18), rgba(168, 85, 255, 0.12));
+  --status-icon-bg: rgba(255, 255, 255, 0.55);
+  --footer-save-bg: rgba(244, 242, 255, 0.96);
+  --footer-save-bg-end: rgba(244, 242, 255, 0.78);
+  --modal-bg: rgba(255, 255, 255, 0.92);
+  --modal-border: rgba(255, 255, 255, 0.75);
+  --modal-backdrop: rgba(12, 10, 20, 0.4);
+  --nav-bg: rgba(255, 255, 255, 0.78);
+  --nav-border: rgba(255, 255, 255, 0.55);
+  --handle-bg: rgba(28, 21, 53, 0.12);
+  --chip-btn-bg: rgba(108, 76, 255, 0.1);
+  --select-bg: linear-gradient(rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.88));
+  --brand-strip-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.72) 100%);
+  --settings-segment-bg: rgba(255, 255, 255, 0.4);
+  --switch-track: rgba(108, 76, 255, 0.2);
+  --switch-thumb: #ffffff;
+  --login-gradient: linear-gradient(165deg, #5b3fd9 0%, #7b5cff 38%, #b892ff 100%);
+  --dash-header-gradient: linear-gradient(135deg, #4a2fb8 0%, var(--primary) 48%, #9b6bff 100%);
+
+  --radius-lg: 28px;
+  --radius-md: 20px;
+  --radius-sm: 14px;
+  --nav-height: calc(88px + env(safe-area-inset-bottom));
+  --footer-save-height: calc(96px + env(safe-area-inset-bottom));
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-page: #0f0b1f;
+  --bg-gradient-mid: #151028;
+  --bg-page-end: #0a0618;
+  --bg-glow-a: rgba(124, 77, 255, 0.22);
+  --bg-glow-b: rgba(179, 136, 255, 0.14);
+
+  --card-bg: #1b1433;
+  --card-bg-soft: #221840;
+  --card-bg-muted: #1e1738;
+  --surface: #1b1433;
+  --surface-glass: rgba(27, 20, 51, 0.88);
+  --surface-glass-strong: rgba(34, 24, 64, 0.94);
+  --glass-start: rgba(34, 24, 64, 0.96);
+  --glass-end: rgba(27, 20, 51, 0.88);
+  --glass-card-start: rgba(38, 28, 72, 0.95);
+  --glass-card-end: rgba(27, 20, 51, 0.9);
+
+  --text: #ffffff;
+  --text-secondary: #b9b4d0;
+  --text-muted: rgba(185, 180, 208, 0.72);
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --border-glass: rgba(124, 77, 255, 0.22);
+
+  --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.42);
+  --shadow-float: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --shadow-chip: 0 8px 24px rgba(0, 0, 0, 0.32);
+
+  --purple-900: #e8e0ff;
+  --purple-700: #c4b5fd;
+  --primary: #7c4dff;
+  --primary-mid: #9b6bff;
+  --primary-soft: #b388ff;
+  --accent: #7c4dff;
+  --accent-secondary: #b388ff;
+  --accent-hot: #b388ff;
+
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #fb7185;
+  --info: #60a5fa;
+
+  --input-bg: rgba(27, 20, 51, 0.95);
+  --input-border: rgba(124, 77, 255, 0.28);
+  --sheet-bg: rgba(27, 20, 51, 0.92);
+  --sheet-border: rgba(124, 77, 255, 0.18);
+  --segmented-bg: rgba(20, 14, 40, 0.85);
+  --segmented-border: rgba(124, 77, 255, 0.2);
+  --mini-stat-bg: rgba(34, 24, 64, 0.9);
+  --student-card-start: rgba(34, 28, 68, 0.98);
+  --student-card-end: rgba(27, 20, 51, 0.95);
+  --status-btn-bg: rgba(124, 77, 255, 0.14);
+  --status-btn-selected: linear-gradient(155deg, rgba(124, 77, 255, 0.35), rgba(179, 136, 255, 0.2));
+  --status-icon-bg: rgba(15, 11, 31, 0.65);
+  --footer-save-bg: rgba(15, 11, 31, 0.96);
+  --footer-save-bg-end: rgba(15, 11, 31, 0.82);
+  --modal-bg: rgba(27, 20, 51, 0.98);
+  --modal-border: rgba(124, 77, 255, 0.22);
+  --modal-backdrop: rgba(5, 2, 12, 0.72);
+  --nav-bg: rgba(20, 14, 40, 0.94);
+  --nav-border: rgba(124, 77, 255, 0.2);
+  --handle-bg: rgba(185, 180, 208, 0.2);
+  --chip-btn-bg: rgba(124, 77, 255, 0.18);
+  --select-bg: linear-gradient(rgba(34, 24, 64, 0.98), rgba(27, 20, 51, 0.95));
+  --brand-strip-bg: linear-gradient(180deg, rgba(27, 20, 51, 0.96) 0%, rgba(15, 11, 31, 0.92) 100%);
+  --settings-segment-bg: rgba(255, 255, 255, 0.06);
+  --switch-track: rgba(124, 77, 255, 0.35);
+  --switch-thumb: #f4f0ff;
+  --login-gradient: linear-gradient(165deg, #1a1038 0%, #2d1f5c 42%, #4a2fb8 100%);
+  --dash-header-gradient: linear-gradient(135deg, #2d1f5c 0%, var(--primary) 52%, #9b6bff 100%);
+}

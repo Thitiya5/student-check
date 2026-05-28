@@ -1,0 +1,471 @@
+/* Premium dark mode — global + page overrides */
+
+[data-theme='dark'] body {
+  background:
+    radial-gradient(1200px circle at 20% -10%, var(--bg-glow-a), transparent 45%),
+    radial-gradient(900px circle at 100% 0%, var(--bg-glow-b), transparent 40%),
+    linear-gradient(180deg, var(--bg-page) 0%, var(--bg-gradient-mid) 55%, var(--bg-page-end) 100%);
+}
+
+/* —— Glass & cards —— */
+[data-theme='dark'] .glass-card {
+  background: linear-gradient(155deg, var(--glass-card-start), var(--glass-card-end));
+  border-color: var(--border-glass);
+}
+
+[data-theme='dark'] .page-header.glass-card,
+[data-theme='dark'] .glass-card.page-header,
+[data-theme='dark'] .check-page-header,
+[data-theme='dark'] .app-header.glass-card,
+[data-theme='dark'] .glass-card.app-header {
+  background: linear-gradient(155deg, var(--glass-start), var(--glass-end));
+  color: var(--text);
+}
+
+[data-theme='dark'] .stat-card,
+[data-theme='dark'] .activity-card,
+[data-theme='dark'] .history-card,
+[data-theme='dark'] .student-admin-card,
+[data-theme='dark'] .chart-card,
+[data-theme='dark'] .menu-card,
+[data-theme='dark'] .summary-card {
+  background: linear-gradient(155deg, var(--card-bg-soft), var(--card-bg));
+  border-color: var(--border-glass);
+}
+
+[data-theme='dark'] .dash-stat {
+  background: linear-gradient(155deg, var(--card-bg-soft), var(--card-bg));
+}
+
+[data-theme='dark'] .dash-action {
+  background: var(--card-bg);
+}
+
+[data-theme='dark'] .dash-activity-item,
+[data-theme='dark'] .dash-class-chip {
+  background: var(--card-bg);
+  border-color: var(--border-glass);
+}
+
+[data-theme='dark'] .dash-action__icon {
+  background: linear-gradient(145deg, rgba(124, 77, 255, 0.22), rgba(179, 136, 255, 0.14));
+  color: var(--primary-soft);
+}
+
+[data-theme='dark'] .dash-panel {
+  background: linear-gradient(155deg, var(--card-bg-soft), var(--card-bg));
+  border-color: var(--border-glass);
+}
+
+/* —— App brand strip —— */
+[data-theme='dark'] .app-brand-strip {
+  background: var(--brand-strip-bg);
+  border-bottom-color: var(--border-glass);
+}
+
+[data-theme='dark'] .school-brand--strip .school-brand__name {
+  color: var(--text);
+}
+
+/* —— Bottom navigation —— */
+[data-theme='dark'] .bottom-nav {
+  background: var(--nav-bg);
+  border-color: var(--nav-border);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme='dark'] .bottom-nav-button {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .bottom-nav-button.active {
+  color: var(--primary-soft);
+  background: linear-gradient(165deg, rgba(124, 77, 255, 0.28), rgba(179, 136, 255, 0.14));
+}
+
+/* —— Inputs & forms —— */
+[data-theme='dark'] .input-field,
+[data-theme='dark'] .select-field,
+[data-theme='dark'] .attendance-search input {
+  background: var(--input-bg);
+  border-color: var(--input-border);
+  color: var(--text);
+}
+
+[data-theme='dark'] .input-field::placeholder {
+  color: var(--text-muted);
+}
+
+[data-theme='dark'] .select-field {
+  background: var(--chip-btn-bg);
+}
+
+[data-theme='dark'] .page-tab-button {
+  background: var(--segmented-bg);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .page-tab-button.active {
+  color: #fff;
+}
+
+[data-theme='dark'] .back-button {
+  background: var(--surface-glass-strong);
+}
+
+/* —— Attendance page —— */
+[data-theme='dark'] .attendance-sheet {
+  background: var(--sheet-bg);
+  border-color: var(--sheet-border);
+  box-shadow:
+    inset 0 1px 0 rgba(124, 77, 255, 0.12),
+    0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme='dark'] .attendance-sheet__handle,
+[data-theme='dark'] .modal-handle {
+  background: var(--handle-bg);
+}
+
+[data-theme='dark'] .attendance-sheet__head {
+  border-bottom-color: var(--border-glass);
+}
+
+[data-theme='dark'] .attendance-class-select {
+  background: var(--select-bg);
+  border-color: var(--input-border);
+  color: var(--text);
+}
+
+[data-theme='dark'] .attendance-mini {
+  background: var(--mini-stat-bg);
+  border-color: var(--border-glass);
+}
+
+[data-theme='dark'] .attendance-student-card {
+  background: linear-gradient(165deg, var(--student-card-start), var(--student-card-end));
+  border-color: var(--border-glass);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(124, 77, 255, 0.1);
+}
+
+[data-theme='dark'] .attendance-student-card__id {
+  color: var(--text-muted);
+}
+
+[data-theme='dark'] .attendance-student-card__avatar {
+  color: var(--primary-soft);
+  background: linear-gradient(145deg, rgba(124, 77, 255, 0.28), rgba(179, 136, 255, 0.16));
+  box-shadow: inset 0 0 0 1px rgba(124, 77, 255, 0.2);
+}
+
+[data-theme='dark'] .segmented,
+[data-theme='dark'] .app-pages .segmented {
+  background: var(--segmented-bg);
+  border-color: var(--segmented-border);
+}
+
+[data-theme='dark'] .segmented button {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .segmented button.is-active {
+  color: var(--primary-soft);
+  background: linear-gradient(155deg, rgba(124, 77, 255, 0.28), rgba(179, 136, 255, 0.14));
+}
+
+[data-theme='dark'] .attendance-status-btn {
+  background: var(--status-btn-bg);
+  color: var(--text);
+}
+
+[data-theme='dark'] .attendance-status-btn__icon {
+  background: var(--status-icon-bg);
+  box-shadow:
+    inset 0 1px 0 rgba(124, 77, 255, 0.15),
+    0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .attendance-status-btn--selected {
+  background: var(--status-btn-selected);
+  box-shadow:
+    0 12px 24px rgba(124, 77, 255, 0.22),
+    inset 0 0 0 1px rgba(179, 136, 255, 0.28);
+  color: #fff;
+}
+
+@media (hover: hover) {
+  [data-theme='dark'] .attendance-status-btn:not(:disabled):not(.attendance-status-btn--selected):hover {
+    background: rgba(124, 77, 255, 0.22);
+    transform: translateY(-1px);
+  }
+
+  [data-theme='dark'] .bottom-nav-button:not(.active):hover {
+    opacity: 0.85;
+    background: rgba(124, 77, 255, 0.12);
+  }
+
+  [data-theme='dark'] .history-card:hover,
+  [data-theme='dark'] .student-admin-card:hover {
+    border-color: rgba(179, 136, 255, 0.35);
+  }
+}
+
+[data-theme='dark'] .attendance-status-btn--selected .attendance-status-btn__label,
+[data-theme='dark'] .attendance-status-btn--selected {
+  font-weight: 800;
+}
+
+[data-theme='dark'] .attendance-chip-btn {
+  background: var(--chip-btn-bg);
+  color: var(--primary-soft);
+}
+
+[data-theme='dark'] .check-page-header__back,
+[data-theme='dark'] .modal-close {
+  background: var(--chip-btn-bg);
+  color: var(--text);
+  border-color: var(--border-glass);
+}
+
+[data-theme='dark'] .class-picker-fixed,
+[data-theme='dark'] .class-picker-note {
+  background: var(--chip-btn-bg);
+}
+
+[data-theme='dark'] .attendance-footer-slot {
+  background: linear-gradient(to top, var(--footer-save-bg), var(--footer-save-bg-end));
+  border-top-color: var(--border-glass);
+}
+
+[data-theme='dark'] .attendance-save-btn {
+  background: linear-gradient(135deg, #5b3fd9, var(--primary), var(--accent-secondary));
+  box-shadow: 0 18px 40px rgba(124, 77, 255, 0.45);
+}
+
+/* Status icon colors — brighter in dark */
+[data-theme='dark'] .attendance-status-btn__icon--present::after {
+  color: #6ee7b7;
+}
+
+[data-theme='dark'] .attendance-status-btn__icon--late::after {
+  border-color: #fcd34d;
+  border-top-color: transparent;
+}
+
+[data-theme='dark'] .attendance-status-btn__icon--absent::after {
+  color: #fda4af;
+}
+
+[data-theme='dark'] .attendance-status-btn__icon--sick::after {
+  color: #7dd3fc;
+}
+
+[data-theme='dark'] .attendance-status-btn__icon--errand::after {
+  color: #c4b5fd;
+}
+
+[data-theme='dark'] .attendance-status-btn__icon--activity::after {
+  color: #93c5fd;
+}
+
+/* —— Modals —— */
+[data-theme='dark'] .modal-backdrop {
+  background: var(--modal-backdrop);
+}
+
+[data-theme='dark'] .modal-sheet {
+  background: var(--modal-bg);
+  border-color: var(--modal-border);
+  color: var(--text);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55);
+}
+
+[data-theme='dark'] .modal-title,
+[data-theme='dark'] .edit-modal__title {
+  color: var(--text);
+}
+
+/* —— History & reports —— */
+[data-theme='dark'] .filter-panel {
+  background: linear-gradient(155deg, var(--glass-card-start), var(--glass-card-end));
+}
+
+[data-theme='dark'] .chart-col__bar-wrap {
+  background: rgba(124, 77, 255, 0.08);
+  border-radius: 8px;
+}
+
+[data-theme='dark'] .chart-line__grid {
+  stroke: rgba(124, 77, 255, 0.22);
+}
+
+[data-theme='dark'] .chart-line__area {
+  fill: rgba(52, 211, 153, 0.12);
+}
+
+[data-theme='dark'] .chart-line__dot {
+  stroke: var(--surface);
+}
+
+[data-theme='dark'] .chart-bar-track {
+  background: rgba(124, 77, 255, 0.18);
+}
+
+[data-theme='dark'] .status-badge--present {
+  background: rgba(52, 211, 153, 0.18);
+  color: #6ee7b7;
+}
+
+[data-theme='dark'] .status-badge--late {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .status-badge--absent {
+  background: rgba(251, 113, 133, 0.18);
+  color: #fda4af;
+}
+
+[data-theme='dark'] .status-badge--leave {
+  background: rgba(124, 77, 255, 0.2);
+  color: var(--primary-soft);
+}
+
+[data-theme='dark'] .status-badge--sick {
+  background: rgba(96, 165, 250, 0.18);
+  color: #7dd3fc;
+}
+
+[data-theme='dark'] .status-badge--errand {
+  background: rgba(167, 139, 250, 0.18);
+  color: #c4b5fd;
+}
+
+[data-theme='dark'] .status-badge--activity {
+  background: rgba(96, 165, 250, 0.18);
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .stat-card--present .stat-card__value,
+[data-theme='dark'] .dash-stat--present .dash-stat__value {
+  color: #6ee7b7;
+}
+
+[data-theme='dark'] .stat-card--absent .stat-card__value,
+[data-theme='dark'] .dash-stat--absent .dash-stat__value {
+  color: #fda4af;
+}
+
+[data-theme='dark'] .stat-card--late .stat-card__value,
+[data-theme='dark'] .dash-stat--late .dash-stat__value {
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .stat-card--percent .stat-card__value,
+[data-theme='dark'] .dash-stat--percent .dash-stat__value {
+  background: linear-gradient(90deg, var(--primary), var(--accent-secondary));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* —— Settings —— */
+[data-theme='dark'] .settings-segment:not(.is-active) {
+  background: var(--settings-segment-bg);
+  color: var(--text-secondary);
+  border-color: var(--border-glass);
+}
+
+[data-theme='dark'] .settings-switch__slider {
+  background: var(--switch-track);
+}
+
+[data-theme='dark'] .settings-switch__slider::before {
+  background: var(--switch-thumb);
+}
+
+[data-theme='dark'] .settings-toggle-row.is-dark .settings-toggle__label {
+  color: var(--text);
+}
+
+/* —— Login —— */
+[data-theme='dark'] .login-screen {
+  background:
+    radial-gradient(120% 80% at 10% 0%, rgba(124, 77, 255, 0.35), transparent 55%),
+    radial-gradient(90% 70% at 100% 20%, rgba(179, 136, 255, 0.2), transparent 50%),
+    var(--login-gradient);
+}
+
+[data-theme='dark'] .login-card {
+  background: var(--surface-glass-strong);
+  border-color: var(--border-glass);
+}
+
+[data-theme='dark'] .school-brand--login .school-brand__name {
+  color: #fff;
+}
+
+[data-theme='dark'] .school-brand--login .school-brand__tagline,
+[data-theme='dark'] .school-brand--login .school-brand__name-en {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+[data-theme='dark'] .login-welcome {
+  color: var(--text);
+}
+
+[data-theme='dark'] .login-card__badge {
+  color: var(--primary-soft);
+  background: rgba(124, 77, 255, 0.2);
+  border-color: rgba(124, 77, 255, 0.3);
+}
+
+/* —— Dashboard header —— */
+[data-theme='dark'] .dash-header {
+  background: var(--dash-header-gradient);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme='dark'] .dash-header__brand .school-logo {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* —— Students page tabs —— */
+[data-theme='dark'] .students-tab-button {
+  background: var(--segmented-bg);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .students-tab-button.active {
+  color: #fff;
+}
+
+/* —— Toast —— */
+[data-theme='dark'] .toast-message {
+  background: rgba(27, 20, 51, 0.96);
+  border: 1px solid var(--border-glass);
+  color: #fff;
+}
+
+/* —— UI loading spinner —— */
+[data-theme='dark'] .ui-spinner {
+  border-color: rgba(124, 77, 255, 0.2);
+  border-top-color: var(--primary);
+}
+
+/* —— Button secondary —— */
+[data-theme='dark'] .button-secondary {
+  background: var(--chip-btn-bg);
+  color: var(--primary-soft);
+}
+
+/* —— Admin —— */
+[data-theme='dark'] .admin-record-row {
+  background: var(--card-bg);
+  border-color: var(--border-glass);
+}
+
+[data-theme='dark'] .admin-record-row:hover {
+  background: var(--card-bg-soft);
+}

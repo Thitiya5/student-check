@@ -1,0 +1,100 @@
+/**
+ * Unified text hierarchy — labels and values stay close in weight/contrast.
+ */
+
+.admin-teacher-card__row dt,
+.settings-row__label,
+.field > span,
+.filter-panel .field > span,
+.login-field > span,
+.settings-pin-form .field > span,
+.admin-reset-result__box .admin-teacher-card__row dt {
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.admin-teacher-card__row dd,
+.settings-row__value,
+.admin-reset-result__box .admin-teacher-card__row dd {
+  font-size: var(--type-value-size);
+  font-weight: var(--type-value-weight);
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.admin-teacher-card__name,
+.history-card__name,
+.student-admin-card__name {
+  font-size: var(--type-title-size);
+  font-weight: var(--type-title-weight);
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.history-card__meta,
+.student-admin-card__meta,
+.student-admin-card__parent,
+.student-admin-card__id,
+.student-admin-card__tap,
+.reports-students__meta,
+.reports-students__hint {
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  color: var(--text-secondary);
+}
+
+.settings-action-row__title {
+  font-size: var(--type-value-size);
+  font-weight: var(--type-value-weight);
+  color: var(--text);
+}
+
+.settings-action-row__hint {
+  font-size: 0.82rem;
+  font-weight: var(--type-label-weight);
+  color: var(--text-secondary);
+}
+
+.settings-group__title {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.field-hint,
+.modal-hint,
+.admin-reset-form .field-hint {
+  font-size: 0.8rem;
+  font-weight: var(--type-label-weight);
+  color: var(--text-muted);
+}
+
+.admin-reset-result__pin {
+  font-size: 1.1rem;
+  font-weight: var(--type-value-weight);
+  letter-spacing: 0.05em;
+  color: var(--primary);
+}
+
+.admin-teacher-card__badge {
+  font-weight: var(--type-label-weight);
+}
+
+.confirm-modal__title {
+  font-weight: var(--type-title-weight);
+}
+
+.confirm-modal__message {
+  font-weight: var(--type-label-weight);
+  color: var(--text-secondary);
+}
+
+.ui-empty__title {
+  font-weight: var(--type-title-weight);
+  color: var(--text);
+}
+
+.ui-empty p {
+  font-weight: var(--type-label-weight);
+}

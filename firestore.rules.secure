@@ -1,0 +1,119 @@
+rules_version = '2';
+
+/**
+ * SECURE RULES (saved for later — requires Blaze + Cloud Functions issueTeacherToken).
+ * To enable: copy to firestore.rules and deploy.
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function claims() {
+      return request.auth.token;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && (
+          claims().admin == true
+          || claims().role == 'admin'
+          || (claims().assignedClasses is list && 'ALL' in claims().assignedClasses)
+        );
+    }
+
+    function isTeacher() {
+      return isSignedIn() && claims().role == 'teacher' && !isAdmin();
+    }
+
+    function assignedClasses() {
+      return claims().assignedClasses is list ? claims().assignedClasses : [];
+    }
+
+    function hasAllClassesAccess() {
+      return isAdmin() || 'ALL' in assignedClasses();
+    }
+
+    function canAccessClass(classKey) {
+      return hasAllClassesAccess()
+        || (classKey is string && classKey.size() > 0 && classKey in assignedClasses());
+    }
+
+    function validDateString(d) {
+      return d is string && d.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function validClassKey(classKey) {
+      return classKey is string && classKey.size() > 0 && classKey.size() <= 40;
+    }
+
+    function validStatus(status) {
+      return status is string && status in [
+        'present', 'late', 'absent', 'sick', 'errand', 'activity', 'leave',
+        'มา', 'สาย', 'ขาด', 'ลาป่วย', 'ลากิจ', 'ลากิจกรรม', 'ลา', 'ป่วย'
+      ];
+    }
+
+    function validTeacherName(name) {
+      return name is string && name.size() > 0 && name.size() <= 120;
+    }
+
+    function validAttendanceData(data) {
+      return data.keys().hasAll([
+          'student_id', 'class', 'status', 'teacherName', 'attendanceDate'
+        ])
+        && data.student_id is string
+        && data.student_id.size() > 0
+        && validClassKey(data.class)
+        && validStatus(data.status)
+        && validTeacherName(data.teacherName)
+        && validDateString(data.attendanceDate);
+    }
+
+    function teacherCanWriteAttendance(data) {
+      return isTeacher() && canAccessClass(data.class) && validAttendanceData(data);
+    }
+
+    match /attendance/{docId} {
+      allow read: if isSignedIn() && (isAdmin() || canAccessClass(resource.data.class));
+      allow create: if isAdmin() && validAttendanceData(request.resource.data);
+      allow create: if teacherCanWriteAttendance(request.resource.data);
+      allow update: if isAdmin() && validAttendanceData(request.resource.data);
+      allow update: if isTeacher()
+        && canAccessClass(resource.data.class)
+        && canAccessClass(request.resource.data.class)
+        && validAttendanceData(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /students/{studentId} {
+      allow read: if isSignedIn()
+        && (isAdmin() || (resource.data.class is string && canAccessClass(resource.data.class)));
+      allow write: if isAdmin();
+    }
+
+    match /classes/{classKey}/students/{studentId} {
+      allow read: if isSignedIn() && (isAdmin() || canAccessClass(classKey));
+      allow write: if isAdmin();
+    }
+
+    match /teachers/{teacherId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == teacherId);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /reports/{reportId}/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

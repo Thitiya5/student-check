@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "famous-augury-495905-c3"
+  },
+  "targets": {
+    "famous-augury-495905-c3": {
+      "hosting": {
+        "app": [
+          "student-check-th"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

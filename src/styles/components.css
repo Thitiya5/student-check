@@ -1,0 +1,534 @@
+.app-header {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  margin-bottom: 1rem;
+  padding: 1.45rem;
+  color: white;
+  background: linear-gradient(135deg, var(--purple-900), var(--primary), var(--accent-hot));
+  box-shadow: var(--shadow-float);
+}
+
+/* Prevent white text when glass-card overrides the gradient background */
+.app-header.glass-card,
+.glass-card.app-header {
+  color: var(--text);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.68));
+  box-shadow: var(--shadow-soft);
+}
+
+.app-header.glass-card h1,
+.glass-card.app-header h1 {
+  color: var(--text);
+}
+
+.app-header.glass-card p,
+.glass-card.app-header p {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+.app-header.glass-card::after,
+.glass-card.app-header::after {
+  display: none;
+}
+
+.app-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.26), transparent 38%),
+    radial-gradient(circle at 92% -10%, rgba(255, 255, 255, 0.12), transparent 40%);
+  pointer-events: none;
+}
+
+.app-header h1 {
+  margin: 0 0 0.45rem;
+  font-size: 1.5rem;
+  font-weight: 720;
+}
+
+.app-header p {
+  margin: 0;
+  opacity: 0.92;
+  font-size: 0.94rem;
+}
+
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--border-glass);
+}
+
+.summary-card strong {
+  font-size: 1.4rem;
+}
+
+.summary-card span {
+  color: var(--text-secondary);
+}
+
+.stat-value {
+  font-weight: 700;
+  font-size: 1.5rem;
+}
+
+.menu-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 144px;
+  padding: 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-soft);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease;
+}
+
+.menu-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 55px rgba(76, 42, 180, 0.12);
+}
+
+.menu-card h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.menu-card p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.bottom-nav-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 6px 12px calc(10px + env(safe-area-inset-bottom));
+  pointer-events: none;
+}
+
+.bottom-nav-wrap .bottom-nav {
+  pointer-events: auto;
+  width: min(520px, 100%);
+}
+
+.bottom-nav {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  margin: 0;
+  border-radius: 22px;
+  background: var(--nav-bg);
+  border-color: var(--nav-border);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+  box-shadow: 0 18px 50px rgba(48, 32, 100, 0.18);
+}
+
+.bottom-nav-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.65rem 0.35rem;
+  border-radius: 16px;
+  border: none;
+  background: transparent;
+  color: var(--purple-700);
+  cursor: pointer;
+  opacity: 0.58;
+  font-weight: 600;
+  font-size: 0.72rem;
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.bottom-nav-button .bottom-nav-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.06));
+}
+
+.bottom-nav-button.active {
+  opacity: 1;
+  color: var(--primary);
+  background: linear-gradient(165deg, rgba(108, 76, 255, 0.16), rgba(168, 85, 255, 0.12));
+}
+
+.bottom-nav-button:active {
+  transform: scale(0.96);
+}
+
+.toast-message {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--nav-height) + 14px);
+  transform: translateX(-50%);
+  background: rgba(28, 21, 53, 0.92);
+  color: white;
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1.2rem;
+  box-shadow: var(--shadow-float);
+  z-index: 50;
+}
+
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 420px);
+  padding: 1.65rem 1.5rem;
+  margin: 0 auto;
+  border-radius: var(--radius-lg);
+}
+
+.login-card,
+.check-card,
+.student-card,
+.attendance-card {
+  background: var(--surface-glass-strong);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.login-card h2 {
+  margin-top: 0;
+}
+
+.form-group {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.select-field,
+.button-primary,
+.button-secondary {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1rem;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease;
+}
+
+.select-field {
+  background: rgba(108, 76, 255, 0.06);
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.select-field:focus,
+.button-primary:focus,
+.button-secondary:focus {
+  outline: 2px solid rgba(108, 76, 255, 0.28);
+}
+
+.button-primary {
+  background: linear-gradient(135deg, var(--primary), var(--accent-hot));
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 16px 40px rgba(108, 76, 255, 0.35);
+  cursor: pointer;
+}
+
+.button-secondary {
+  background: rgba(108, 76, 255, 0.08);
+  color: var(--primary);
+}
+
+.button-primary:active,
+.button-secondary:active {
+  transform: scale(0.99);
+}
+
+.input-field {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-glass);
+  background: var(--input-bg);
+  color: var(--text);
+}
+
+.check-card {
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.students-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.students-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.students-tab-button {
+  border: none;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--text);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.students-tab-button.active {
+  background: linear-gradient(135deg, var(--primary), var(--accent-hot));
+  color: white;
+}
+
+.students-tab-button:active {
+  transform: scale(0.98);
+}
+
+.search-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.room-selector {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.95rem;
+}
+
+.room-selector label {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.students-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.student-card {
+  padding: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.student-name {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.student-name strong {
+  font-size: 1rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: white;
+}
+
+.status-present {
+  background: var(--success);
+}
+.status-late {
+  background: var(--warning);
+  color: #4a3710;
+}
+.status-absent {
+  background: var(--danger);
+}
+.status-leave {
+  background: var(--info);
+}
+
+.status-errand {
+  background: #8b5cf6;
+}
+
+.status-activity {
+  background: #3b82f6;
+}
+
+.status-sick {
+  background: #0ea5e9;
+}
+
+.status-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+@media (min-width: 520px) {
+  .status-buttons {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.status-chip {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(108, 76, 255, 0.06);
+  color: var(--text);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.status-chip.selected {
+  background: linear-gradient(135deg, rgba(108, 76, 255, 0.22), rgba(168, 85, 255, 0.18));
+  box-shadow: 0 12px 28px rgba(108, 76, 255, 0.14);
+}
+
+.status-chip:active {
+  transform: scale(0.98);
+}
+
+.page-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.action-button {
+  flex: 1;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.action-button:active {
+  transform: scale(0.99);
+}
+
+.action-present {
+  background: var(--success);
+  color: white;
+}
+
+.fixed-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--nav-height);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.86);
+  border-top: 1px solid var(--border-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 25;
+}
+
+.fixed-footer .button-primary {
+  width: 100%;
+}
+
+.table-container {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.students-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+
+.students-table th,
+.students-table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.students-table th {
+  background: linear-gradient(135deg, var(--purple-700), var(--primary));
+  color: white;
+  font-weight: 600;
+}
+
+.students-table tr:last-child td {
+  border-bottom: none;
+}
+
+.button-small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--primary);
+  color: white;
+  cursor: pointer;
+  margin-right: 0.25rem;
+}
+
+.button-small:hover {
+  filter: brightness(1.06);
+}
+
+.button-danger {
+  background: var(--danger);
+}
+
+.teacher-name-card {
+  margin: 0 1rem 0.85rem;
+  padding: 1rem 1.1rem;
+}
+
+.teacher-name-field {
+  margin: 0;
+  gap: 0.45rem;
+}
+
+.teacher-name-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+.teacher-name-input {
+  font-size: 1.05rem;
+  min-height: 48px;
+  border-radius: 14px;
+}

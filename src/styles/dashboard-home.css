@@ -1,0 +1,444 @@
+/* Dashboard home — clean mobile-first layout */
+
+.dashboard-home {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+}
+
+/* —— Header card —— */
+.dash-header {
+  position: relative;
+  overflow: hidden;
+  padding: 1rem 1rem 1.1rem;
+  border-radius: var(--radius-lg);
+  color: #fff;
+  background: var(--dash-header-gradient);
+  box-shadow: 0 14px 36px rgba(76, 42, 180, 0.28);
+}
+
+.dash-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.22), transparent 45%),
+    radial-gradient(circle at 95% 0%, rgba(255, 255, 255, 0.12), transparent 40%);
+  pointer-events: none;
+}
+
+.dash-header__top,
+.dash-header__greeting {
+  position: relative;
+  z-index: 1;
+}
+
+.dash-header__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+.dash-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-header__brand .school-logo {
+  flex-shrink: 0;
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 4px 14px rgba(28, 21, 53, 0.15);
+}
+
+.dash-header__school {
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-header__school-name {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-header__school-tag {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  opacity: 0.88;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-header__logout {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.4rem 0.65rem;
+  border-radius: 10px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.dash-header__logout:active {
+  transform: scale(0.97);
+}
+
+.dash-header__greeting {
+  padding-top: 0.15rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dash-header__hello {
+  margin: 0.75rem 0 0.25rem;
+  font-size: clamp(1.25rem, 4.8vw, 1.5rem);
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.dash-header__date {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  opacity: 0.9;
+  line-height: 1.35;
+}
+
+.page-app-header {
+  margin-bottom: 0.85rem;
+}
+
+.dash-header__extra {
+  margin-top: 0.35rem;
+}
+
+.dash-header__extra .page-scope-hint,
+.dash-header__extra .page-scope-hint--header,
+.dash-header__extra .reports-today-badge,
+.dash-header__extra .reports-today-badge--header {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.4;
+}
+
+.dash-header__back {
+  min-height: 2.1rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.page-app-header--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 35;
+  margin-bottom: 0.65rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.nav-quick-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+}
+
+.nav-quick-link {
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.28rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  background: var(--surface-glass-strong, rgba(255, 255, 255, 0.72));
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.nav-quick-link.is-active {
+  border-color: rgba(108, 76, 255, 0.35);
+  color: var(--primary);
+  background: rgba(108, 76, 255, 0.1);
+}
+
+.dash-alert--ok {
+  border-left: 4px solid #0d9f6e;
+}
+
+.dash-alert--ok strong {
+  color: #0a7a55;
+}
+
+.dash-alert--ok p {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.dash-alert--info p {
+  display: none;
+}
+
+/* —— Summary stats —— */
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.dash-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 4.75rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(155deg, var(--card-bg-soft), var(--card-bg-muted));
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.dash-stat__label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.dash-stat__value {
+  font-size: clamp(1.45rem, 5vw, 1.75rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.dash-stat--accent .dash-stat__value {
+  color: var(--primary);
+}
+
+.dash-stat--present .dash-stat__value {
+  color: #0d9f6e;
+}
+
+.dash-stat--absent .dash-stat__value {
+  color: #e5484d;
+}
+
+.dash-stat--late .dash-stat__value {
+  color: #d97706;
+}
+
+.dash-stat--leave .dash-stat__value {
+  color: #2563eb;
+}
+
+.dash-stat--sick .dash-stat__value {
+  color: #0ea5e9;
+}
+
+.dash-stat--errand .dash-stat__value {
+  color: #7c3aed;
+}
+
+.dash-stat--activity .dash-stat__value {
+  color: #1d4ed8;
+}
+
+.dash-stat--percent {
+  grid-column: 1 / -1;
+}
+
+.dash-stat--percent .dash-stat__value {
+  background: linear-gradient(90deg, var(--primary), var(--accent-hot));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* —— Quick actions —— */
+.dash-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.dash-actions--five .dash-action:last-child {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: min(10.5rem, 100%);
+}
+
+.dash-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 4.85rem;
+  padding: 0.65rem 0.35rem;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dash-action:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--primary) 70%, white 30%);
+  outline-offset: 2px;
+}
+
+.dash-action:active {
+  transform: scale(0.97);
+}
+
+.dash-action__icon {
+  width: 2.1rem;
+  height: 2.1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--primary);
+  background: linear-gradient(145deg, rgba(108, 76, 255, 0.14), rgba(168, 85, 255, 0.1));
+}
+
+.dash-action__icon svg {
+  display: block;
+}
+
+.dash-action__label {
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--text);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* —— Sections —— */
+.dash-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.dash-section__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.dash-class-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.dash-class-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-soft);
+}
+
+.dash-class-chip__name {
+  font-weight: 650;
+}
+
+.dash-class-chip__meta {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.dash-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.dash-activity-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-soft);
+}
+
+.dash-activity-item__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.dash-activity-item__main strong {
+  font-size: 0.9rem;
+  font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-activity-item__meta {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+}
+
+.page-content--dashboard {
+  padding-top: calc(12px + env(safe-area-inset-top));
+}
+
+@media (max-width: 360px) {
+  .dash-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dash-header__school-name {
+    font-size: 0.82rem;
+  }
+}
+
+@media (min-width: 480px) {
+  .dash-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dash-stat--percent {
+    grid-column: auto;
+  }
+}

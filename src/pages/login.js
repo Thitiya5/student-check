@@ -1,0 +1,124 @@
+import { escapeHtml } from '../utils/html.js';
+import { t } from '../i18n/index.js';
+import { renderSchoolBrand } from '../components/schoolLogo.js';
+import { isPinLoginEnabled } from '../services/appConfig.js';
+
+/**
+ * @param {HTMLElement} container
+ * @param {{ onLogin: (identifier: string, pin: string) => void | Promise<void>, initialName?: string }} ctx
+ */
+export function renderLoginPage(container, { onLogin, initialName = '' }) {
+  const pinMode = isPinLoginEnabled();
+  const nameLabel = pinMode ? t('login.userLabel') : t('login.teacherLabel');
+
+  container.innerHTML = `
+    <article class="login-screen">
+      <span class="login-screen__glow login-screen__glow--a" aria-hidden="true"></span>
+      <span class="login-screen__glow login-screen__glow--b" aria-hidden="true"></span>
+
+      <div class="login-brand-hero">
+        ${renderSchoolBrand({ variant: 'login', showEnglish: true })}
+      </div>
+
+      <section class="login-card login-card--animated">
+        <h2 class="login-welcome">${escapeHtml(t('login.title'))}</h2>
+        <form class="login-form" id="loginForm" novalidate>
+          <label class="field login-field" for="loginTeacherName">
+            <span>${escapeHtml(nameLabel)}</span>
+            <input
+              id="loginTeacherName"
+              class="input-field login-input"
+              type="text"
+              name="loginIdentifier"
+              autocomplete="username"
+              value="${escapeHtml(initialName)}"
+              required
+            />
+          </label>
+          ${
+            pinMode
+              ? `<label class="field login-field login-pin-field" id="loginPinField" for="loginTeacherPin">
+            <span>${escapeHtml(t('login.pinLabel'))}</span>
+            <input
+              id="loginTeacherPin"
+              class="input-field login-input"
+              type="password"
+              name="teacherPin"
+              inputmode="numeric"
+              autocomplete="current-password"
+              maxlength="12"
+              placeholder="${escapeHtml(t('login.pinPlaceholder'))}"
+            />
+          </label>`
+              : ''
+          }
+          <button type="submit" class="button-primary login-submit" id="loginSubmitBtn">
+            <span class="login-submit__label">${escapeHtml(t('login.submit'))}</span>
+          </button>
+          <p class="login-status" id="loginStatus" hidden aria-live="polite"></p>
+        </form>
+      </section>
+
+      <footer class="login-screen__credit">
+        <p>จัดทำโดย นางสาวเกศจุฬา ภูนาเมือง</p>
+      </footer>
+    </article>
+  `;
+
+  const form = container.querySelector('#loginForm');
+  const input = container.querySelector('#loginTeacherName');
+  const pinInput = container.querySelector('#loginTeacherPin');
+
+  const submitBtn = container.querySelector('#loginSubmitBtn');
+  const statusEl = container.querySelector('#loginStatus');
+  const submitLabel = submitBtn?.querySelector('.login-submit__label');
+
+  if (pinMode && pinInput instanceof HTMLInputElement) {
+    pinInput.required = true;
+  }
+
+  function setLoading(loading) {
+    if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = loading;
+    if (input instanceof HTMLInputElement) input.disabled = loading;
+    if (pinInput instanceof HTMLInputElement) pinInput.disabled = loading;
+    if (statusEl) {
+      statusEl.hidden = !loading;
+      statusEl.textContent = loading ? t('login.loading') : '';
+    }
+    if (submitLabel) {
+      submitLabel.textContent = loading ? t('login.loading') : t('login.submit');
+    }
+  }
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const identifier = input instanceof HTMLInputElement ? input.value.trim() : '';
+    const pin = pinMode && pinInput instanceof HTMLInputElement ? pinInput.value.trim() : '';
+    if (!identifier) {
+      alert(pinMode ? t('login.userRequired') : t('login.nameRequired'));
+      input?.focus();
+      return;
+    }
+    if (pinMode && !pin) {
+      alert(t('login.pinRequired'));
+      pinInput?.focus();
+      return;
+    }
+    setLoading(true);
+    try {
+      await onLogin(identifier, pin);
+    } catch (err) {
+      if (statusEl) {
+        statusEl.hidden = false;
+        statusEl.textContent =
+          err instanceof Error ? err.message : t('login.failed');
+      }
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  requestAnimationFrame(() => {
+    input?.focus();
+  });
+}
