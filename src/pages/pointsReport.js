@@ -135,7 +135,6 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
           <input type="date" id="ptsTo" class="reports-filter__control input-field" value="${escapeHtml(initialTo)}" />
         </label>
         <button type="button" class="reports-today-chip" id="ptsTodayBtn">${escapeHtml(t('common.today'))}</button>
-        <button type="button" class="reports-today-chip" id="ptsSyncBtn">${escapeHtml(t('pointsReport.syncPoints'))}</button>
       </div>
     </div>
     <div class="reports-toolbar__block" id="ptsClassBlock">
@@ -770,7 +769,6 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
         if (reconciled > 0) {
           data = await fetchPointsRows(rangeOpts);
           if (seq !== refreshSeq) return;
-          onToast?.(t('pointsReport.pointsSynced', { count: reconciled }));
         }
       }
       const attendanceRows = await attendancePromise;
@@ -824,25 +822,6 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
     if (fromInput) fromInput.value = today;
     if (toInput) toInput.value = today;
     void refresh();
-  });
-
-  container.querySelector('#ptsSyncBtn')?.addEventListener('click', async () => {
-    const btn = container.querySelector('#ptsSyncBtn');
-    if (btn instanceof HTMLButtonElement) btn.disabled = true;
-    try {
-      const count = await reconcileStaleSystemPoints(session, {
-        from: fromInput?.value || today,
-        to: toInput?.value || today,
-        level: levelSel?.value || '',
-        room: roomSel?.value || ''
-      });
-      onToast?.(count ? t('pointsReport.pointsSynced', { count }) : t('pointsReport.pointsSyncNone'));
-      void refresh();
-    } catch (err) {
-      onToast?.(err?.message || t('pointsReport.pointsSyncFailed'));
-    } finally {
-      if (btn instanceof HTMLButtonElement) btn.disabled = false;
-    }
   });
 
   if (initialTab === 'behavior') {
