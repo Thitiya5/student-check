@@ -6,7 +6,7 @@ import {
   deleteAttendanceRecord,
   buildAttendanceClassKey
 } from '../services/attendanceService.js';
-import { resyncPointsAfterHistoryChange } from '../services/historyPointSync.js';
+import { resyncPointsAfterHistoryChange, resyncPointsForDateScope } from '../services/historyPointSync.js';
 import { openEditAttendanceModal } from '../components/editAttendanceModal.js';
 import { openConfirmModal } from '../components/confirmModal.js';
 import { fetchLevelOptions, fetchRoomOptions } from '../services/studentsService.js';
@@ -88,7 +88,11 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
       );
     }
     if (!visible.length) {
-      listEl.innerHTML = renderEmpty(t('history.empty'), t('history.emptyHint'));
+      listEl.innerHTML = `${renderEmpty(t('history.empty'), t('history.emptyHint'))}
+        <div class="history-empty-actions">
+          <button type="button" class="button-secondary" id="histSyncPoints">${escapeHtml(t('history.syncPoints'))}</button>
+        </div>`;
+      listEl.querySelector('#histSyncPoints')?.addEventListener('click', () => void runPointsSync());
       return;
     }
     listEl.innerHTML = visible
@@ -162,6 +166,30 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
       rooms.map((r) => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
   }
 
+  async function runPointsSync() {
+    const classKey =
+      filters.classKey ||
+      (levelSel?.value && roomSel?.value
+        ? buildAttendanceClassKey(levelSel.value, roomSel.value)
+        : '');
+    const btn = container.querySelector('#histSyncPoints');
+    if (btn instanceof HTMLButtonElement) btn.disabled = true;
+    try {
+      const count = await resyncPointsForDateScope(session, {
+        date: filters.attendanceDate,
+        classKey: classKey || undefined,
+        level: levelSel?.value || '',
+        room: roomSel?.value || '',
+        teacherName: session?.teacherName || ''
+      });
+      onToast?.(count ? t('history.pointsSynced', { count }) : t('history.pointsSyncNone'));
+    } catch (err) {
+      onToast?.(err?.message || t('history.pointsSyncFailed'));
+    } finally {
+      if (btn instanceof HTMLButtonElement) btn.disabled = false;
+    }
+  }
+
   async function refresh() {
     if (listEl) listEl.innerHTML = renderLoading();
     try {
@@ -183,6 +211,15 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
         classKey: classKey || undefined,
         teacherName: admin ? filters.teacherName || undefined : undefined
       });
+      if (!rows.length) {
+        await resyncPointsForDateScope(session, {
+          date: filters.attendanceDate,
+          classKey: classKey || undefined,
+          level: levelSel?.value || '',
+          room: roomSel?.value || '',
+          teacherName: session?.teacherName || ''
+        });
+      }
       renderRows();
     } catch (err) {
       console.error('[history] load failed', err);

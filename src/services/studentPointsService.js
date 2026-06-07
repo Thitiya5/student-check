@@ -509,6 +509,25 @@ export async function syncClassPointTransactions(payload) {
   }
 }
 
+/**
+ * Remove all system-generated point rows for one class/day (e.g. attendance fully cleared).
+ * @returns {Promise<number>} rows deleted
+ */
+export async function purgeSystemPointTransactionsForClassDay(classKey, date) {
+  const existing = await queryPointsByClassAndDate(classKey, date);
+  const systemRows = existing.filter((r) => r.source !== 'manual');
+  if (!systemRows.length) return 0;
+
+  for (let i = 0; i < systemRows.length; i += BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    for (const row of systemRows.slice(i, i + BATCH_LIMIT)) {
+      batch.delete(doc(db, COLLECTION, row.id));
+    }
+    await batch.commit();
+  }
+  return systemRows.length;
+}
+
 export async function syncInspectionPointTransactions(payload) {
   const students = payload.students.map((s) => ({
     student_id: s.student_id,

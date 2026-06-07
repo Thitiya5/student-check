@@ -168,6 +168,10 @@ export const translations = {
     'pointsReport.restoreDisciplineTitle': 'ยืนยันใส่คะแนนระเบียบกลับ',
     'pointsReport.disciplineRestored': 'ใส่คะแนนระเบียบกลับแล้ว',
     'pointsReport.drillHint': 'กดห้องเพื่อดูรายละเอียด',
+    'pointsReport.syncPoints': 'ซิงค์คะแนน',
+    'pointsReport.pointsSynced': 'อัปเดตคะแนนแล้ว {count} ห้อง',
+    'pointsReport.pointsSyncNone': 'คะแนนตรงกับประวัติแล้ว',
+    'pointsReport.pointsSyncFailed': 'ซิงค์คะแนนไม่สำเร็จ',
     'pointsReport.viewOnlyHint': 'ดูอย่างเดียว — เฉพาะห้องที่คุณประจำชั้น',
     'pointsReport.denied': 'ไม่มีสิทธิ์ดูรายงานคะแนน',
 
@@ -491,6 +495,10 @@ export const translations = {
     'history.loadLevelsFailed': 'โหลดชั้นเรียนไม่สำเร็จ',
     'history.deleteFailed': 'ลบไม่สำเร็จ',
     'history.saveFailed': 'บันทึกไม่สำเร็จ',
+    'history.syncPoints': 'ซิงค์คะแนนตามวันที่เลือก',
+    'history.pointsSynced': 'ซิงค์คะแนนแล้ว {count} ห้อง',
+    'history.pointsSyncNone': 'คะแนนตรงกับประวัติแล้ว',
+    'history.pointsSyncFailed': 'ซิงค์คะแนนไม่สำเร็จ',
     'history.levelCol': 'ชั้น (LEVEL)',
 
     'reports.title': 'รายงานมาเรียน',
@@ -1017,6 +1025,10 @@ export const translations = {
     'pointsReport.restoreDisciplineTitle': 'Confirm restore of conduct deductions',
     'pointsReport.disciplineRestored': 'Conduct points restored',
     'pointsReport.drillHint': 'Tap a class for details',
+    'pointsReport.syncPoints': 'Sync points',
+    'pointsReport.pointsSynced': 'Updated points for {count} class(es)',
+    'pointsReport.pointsSyncNone': 'Points already match attendance history',
+    'pointsReport.pointsSyncFailed': 'Could not sync points',
     'pointsReport.viewOnlyHint': 'View only — your homeroom class(es)',
     'pointsReport.denied': 'You cannot view the points report',
 
@@ -1339,6 +1351,10 @@ export const translations = {
     'history.loadLevelsFailed': 'Could not load levels',
     'history.deleteFailed': 'Could not delete',
     'history.saveFailed': 'Could not save',
+    'history.syncPoints': 'Sync points for selected date',
+    'history.pointsSynced': 'Synced points for {count} class(es)',
+    'history.pointsSyncNone': 'Points already match attendance history',
+    'history.pointsSyncFailed': 'Could not sync points',
     'history.levelCol': 'Level (LEVEL)',
 
     'reports.title': 'Attendance report',
