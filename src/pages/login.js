@@ -123,24 +123,34 @@ export function renderLoginPage(container, { onLogin, initialName = '' }) {
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const identifier = input instanceof HTMLInputElement ? input.value.trim() : '';
-    const pin = pinInput instanceof HTMLInputElement ? pinInput.value.trim() : '';
     if (!identifier) {
       alert(t('login.nameRequired'));
       input?.focus();
       return;
     }
-    if (pinRequired && !pin) {
-      alert(t('login.adminPinRequired'));
-      pinInput?.focus();
-      return;
-    }
     setLoading(true);
     try {
+      await refreshPinRequirement();
+      const pin = pinInput instanceof HTMLInputElement ? pinInput.value.trim() : '';
+      if (pinRequired && !pin) {
+        setPinFieldVisible(true);
+        if (statusEl) {
+          statusEl.hidden = false;
+          statusEl.textContent = t('login.adminPinRequired');
+        }
+        pinInput?.focus();
+        return;
+      }
       await onLogin(identifier, pin);
     } catch (err) {
+      const message = err instanceof Error ? err.message : t('login.failed');
+      if (/pin/i.test(message)) {
+        setPinFieldVisible(true);
+        await refreshPinRequirement();
+      }
       if (statusEl) {
         statusEl.hidden = false;
-        statusEl.textContent = err instanceof Error ? err.message : t('login.failed');
+        statusEl.textContent = message;
       }
     } finally {
       setLoading(false);

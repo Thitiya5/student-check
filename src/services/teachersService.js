@@ -134,36 +134,36 @@ export async function checkTeacherRequiresPin(teacherNameInput) {
   const input = String(teacherNameInput ?? '').trim();
   if (!input) return { found: false, requiresPin: false };
 
-  try {
-    const out = await teacherRequiresPinGas(input);
-    if (out?.found) {
-      return {
-        found: true,
-        requiresPin: Boolean(out?.requiresPin) || Boolean(out?.ambiguous),
-        ambiguous: Boolean(out?.ambiguous)
-      };
-    }
-  } catch (err) {
-    console.warn('[teachers] teacherRequiresPin failed:', err);
-  }
-
+  /** Prefer roster role (admin/pastoral) — works even when GAS teacherRequiresPin is not redeployed yet. */
   try {
     const teachers = await fetchTeachers();
     const candidates = findTeacherCandidates(teachers, input);
-    if (!candidates.length) return { found: false, requiresPin: false };
-    const top = candidates[0];
-    const second = candidates[1];
-    if (second && top.score === second.score && top.score < 100) {
-      return { found: true, requiresPin: true, ambiguous: true };
+    if (candidates.length) {
+      const top = candidates[0];
+      const second = candidates[1];
+      if (second && top.score === second.score && top.score < 100) {
+        return { found: true, requiresPin: true, ambiguous: true };
+      }
+      const match = top.t;
+      return {
+        found: true,
+        requiresPin: Boolean(match.isAdmin || match.isPastoral),
+        ambiguous: false
+      };
     }
-    const match = top.t;
+  } catch (err) {
+    console.warn('[teachers] checkTeacherRequiresPin roster failed:', err);
+  }
+
+  try {
+    const out = await teacherRequiresPinGas(input);
     return {
-      found: true,
-      requiresPin: Boolean(match.isAdmin || match.isPastoral),
-      ambiguous: false
+      found: Boolean(out?.found),
+      requiresPin: Boolean(out?.requiresPin) || Boolean(out?.ambiguous),
+      ambiguous: Boolean(out?.ambiguous)
     };
   } catch (err) {
-    console.warn('[teachers] checkTeacherRequiresPin fallback failed:', err);
+    console.warn('[teachers] teacherRequiresPin failed:', err);
     return { found: false, requiresPin: false };
   }
 }
