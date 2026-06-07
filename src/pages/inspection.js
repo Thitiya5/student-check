@@ -19,8 +19,16 @@ import { normalizeAttendanceStatus } from '../data/attendanceStatuses.js';
 import { syncInspectionPointTransactions } from '../services/studentPointsService.js';
 import { isInspectionDayCached } from '../services/inspectionScheduleService.js';
 import { getTodayDate } from '../utils/dateIso.js';
-import { isDisciplineScoringEnabled } from '../services/appSettingsService.js';
+import {
+  canRecordDisciplineOnDate,
+  getAppSettings,
+  getDisciplineDeductionRuleIds,
+  initAppSettings,
+  isDisciplineScoringEnabled,
+  listUpcomingInspectionDates
+} from '../services/appSettingsService.js';
 import { isAdminSession, loadTeacherAuthSession } from '../services/teacherAuth.js';
+import { getHashQuery } from '../services/navigation.js';
 
 /**
  * @param {HTMLElement} container
@@ -44,11 +52,9 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
   /** @type {Record<string, { flags: string[] }>} */
   let inspection = {};
   let loaded = false;
-  let inspectionAllowed = false;
 
   container.innerHTML = `${renderPageHeader({
     title: t('inspection.title'),
-    subtitle: t('inspection.subtitle'),
     topAction: 'back'
   })}
   <section class="filter-panel glass-card">
@@ -94,6 +100,48 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
     return st === 'absent';
   }
 
+  /** @param {Array<object>} records */
+  function buildInspectionStateFromRecords(records) {
+    const rules = getDisciplineChecks();
+    const ruleIds = rules.map((r) => r.id);
+    /** @type {typeof inspection} */
+    const next = {};
+
+    for (const s of students) {
+      const sid = s.student_id;
+      const rec = records.find((r) => r.student_id === sid);
+      const st = normalizeAttendanceStatus(attendance[sid] || 'present');
+      if (st === 'absent') {
+        next[sid] = { flags: [...ruleIds] };
+      } else {
+        next[sid] = { flags: normalizeDisciplineFlags(rec?.disciplineFlags || []) };
+      }
+    }
+
+    const presentStudents = students.filter((s) => !isAbsent(s.student_id));
+    const allPresentMarkedFull =
+      ruleIds.length > 0 &&
+      presentStudents.length > 1 &&
+      presentStudents.every((s) => {
+        const flags = next[s.student_id]?.flags || [];
+        return ruleIds.every((id) => flags.includes(id));
+      });
+
+    if (allPresentMarkedFull) {
+      for (const s of presentStudents) {
+        next[s.student_id] = { flags: [] };
+      }
+    }
+
+    return next;
+  }
+
+  function inspectionHintText() {
+    const upcoming = listUpcomingInspectionDates(getAppSettings(), 6).slice(0, 6);
+    if (!upcoming.length) return t('inspection.notScheduledHint');
+    return t('inspection.notScheduledHintDates', { dates: upcoming.join(', ') });
+  }
+
   function renderList() {
     if (!students.length) {
       body.innerHTML = renderEmpty(t('check.noStudents'));
@@ -126,7 +174,6 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
       .join('');
 
     body.innerHTML = `
-      <p class="inspection-hint">${escapeHtml(t('inspection.hint'))}</p>
       <div class="inspection-list">${cards}</div>
       <button type="button" class="button-primary inspection-save" id="inspSaveBtn">${escapeHtml(t('inspection.save'))}</button>`;
 
@@ -148,7 +195,13 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
     body.querySelector('#inspSaveBtn')?.addEventListener('click', () => void saveInspection());
   }
 
+  function absentDisciplineFlagIds() {
+    const fromRules = getDisciplineChecks().map((r) => r.id);
+    return fromRules.length ? fromRules : getDisciplineDeductionRuleIds();
+  }
+
   async function openClass() {
+    await initAppSettings();
     level = levelSel?.value || '';
     room = roomSel?.value || '';
     dateKey = dateInput?.value || today;
@@ -157,9 +210,12 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
       return;
     }
 
-    inspectionAllowed = isInspectionDayCached(dateKey) && isDisciplineScoringEnabled();
-    if (!inspectionAllowed) {
-      body.innerHTML = renderEmpty(t('inspection.notScheduled'), t('inspection.notScheduledHint'));
+    const scheduled = isInspectionDayCached(dateKey);
+    const scoringOn = isDisciplineScoringEnabled();
+    const canResync = canRecordDisciplineOnDate(dateKey) && scoringOn;
+
+    if (!scheduled && !canResync) {
+      body.innerHTML = renderEmpty(t('inspection.notScheduled'), inspectionHintText());
       return;
     }
 
@@ -169,15 +225,35 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
       students = await fetchStudentsByClass(level, room);
       const records = await getAttendanceForClassOnDate(classKey, dateKey);
       attendance = recordsToAttendanceMap(records);
-      inspection = {};
-      for (const s of students) {
-        const sid = s.student_id;
-        const rec = records.find((r) => r.student_id === sid);
-        inspection[sid] = {
-          flags: normalizeDisciplineFlags(rec?.disciplineFlags || [])
-        };
-      }
+      inspection = buildInspectionStateFromRecords(records);
       loaded = true;
+      const teacherName = session?.teacherName || '';
+      if (teacherName) {
+        try {
+          await syncInspectionPointTransactions({
+            classKey,
+            date: dateKey,
+            teacherName,
+            students: students.map((s) => {
+              const sid = s.student_id;
+              const st = normalizeAttendanceStatus(attendance[sid] || 'present');
+              const absent = st === 'absent';
+              const flags = absent
+                ? absentDisciplineFlagIds()
+                : normalizeDisciplineFlags(inspection[sid]?.flags || []);
+              return {
+                student_id: sid,
+                student_name: studentFullName(s),
+                status: st,
+                flags,
+                autoFail: absent
+              };
+            })
+          });
+        } catch (err) {
+          console.warn('[inspection] point resync failed', err);
+        }
+      }
       renderList();
     } catch (err) {
       body.innerHTML = renderEmpty(t('inspection.loadFailed'), err?.message || '');
@@ -194,7 +270,7 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
       const st = normalizeAttendanceStatus(attendance[sid] || 'present');
       const absent = st === 'absent';
       const flags = absent
-        ? getDisciplineChecks().map((r) => r.id)
+        ? absentDisciplineFlagIds()
         : normalizeDisciplineFlags(inspection[sid]?.flags || []);
       return {
         student_id: sid,
@@ -222,7 +298,7 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
           const st = normalizeAttendanceStatus(attendance[sid] || 'present');
           const absent = st === 'absent';
           const flags = absent
-            ? getDisciplineChecks().map((r) => r.id)
+            ? absentDisciplineFlagIds()
             : normalizeDisciplineFlags(inspection[sid]?.flags || []);
           const disc = emptyDisciplineEntry();
           disc.flags = flags;
@@ -235,7 +311,8 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
             disciplineFlags: flags,
             disciplineBehaviors: [],
             disciplineAdjust: 0,
-            disciplineNote: ''
+            disciplineNote: '',
+            disciplineWaived: false
           };
         })
       });
@@ -252,10 +329,22 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
     body.innerHTML = renderEmpty(t('inspection.pickClass'), t('inspection.pickClassHint'));
   });
   container.querySelector('#inspLoadBtn')?.addEventListener('click', () => void openClass());
-  void loadLevels();
-  inspectionAllowed = isInspectionDayCached(today) && isDisciplineScoringEnabled();
-  if (!inspectionAllowed && body) {
-    body.innerHTML = renderEmpty(t('inspection.notScheduled'), t('inspection.notScheduledHint'));
+
+  async function applyDeepLink() {
+    const qs = getHashQuery();
+    const qDate = qs.get('date');
+    const qLevel = qs.get('level');
+    const qRoom = qs.get('room');
+    if (!qDate && !qLevel && !qRoom) return;
+    if (qDate && dateInput instanceof HTMLInputElement) dateInput.value = qDate;
+    if (qLevel && levelSel) levelSel.value = qLevel;
+    if (qLevel) await loadRooms(qLevel);
+    if (qRoom && roomSel) roomSel.value = qRoom;
+    if (qLevel && qRoom) void openClass();
   }
+
+  void initAppSettings()
+    .then(() => loadLevels())
+    .then(() => applyDeepLink());
   container.__inspectionCleanup = () => {};
 }

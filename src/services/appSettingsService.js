@@ -1,7 +1,7 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebaseClient.js';
 import { DEFAULT_APP_SETTINGS } from '../config/appSettingsDefaults.js';
-import { formatDateInBangkok, parseIsoDateKeys } from '../utils/dateIso.js';
+import { formatDateInBangkok, isIsoDateKey, parseIsoDateKeys } from '../utils/dateIso.js';
 
 const COLLECTION = 'app_settings';
 const DOC_ID = 'school';
@@ -11,6 +11,19 @@ const CACHE_KEY = 'student_check_app_settings_v1';
 
 /** @type {AppSettings|null} */
 let memoryCache = null;
+
+/** True after Firestore (or explicit force reload) has been fetched at least once. */
+let firestoreSettingsLoaded = false;
+
+/** @param {unknown} value */
+function coerceEnabledFlag(value, fallback = true) {
+  if (value === false || value === 0 || value === '0') return false;
+  if (value === 'false' || value === 'off' || value === 'no') return false;
+  if (value === true || value === 1 || value === '1') return true;
+  if (value === 'true' || value === 'on' || value === 'yes') return true;
+  if (value == null) return fallback;
+  return Boolean(value);
+}
 
 function deepMerge(base, patch) {
   if (!patch || typeof patch !== 'object') return structuredClone(base);
@@ -33,12 +46,25 @@ function deepMerge(base, patch) {
 export function normalizeAppSettings(raw) {
   const merged = deepMerge(DEFAULT_APP_SETTINGS, raw && typeof raw === 'object' ? raw : {});
 
-  merged.attendance.enabled = Boolean(merged.attendance.enabled);
+  merged.attendance.enabled = coerceEnabledFlag(
+    merged.attendance.enabled,
+    DEFAULT_APP_SETTINGS.attendance.enabled
+  );
   merged.attendance.absentDeduction = Math.max(0, Number(merged.attendance.absentDeduction) || 0);
   merged.attendance.lateDeduction = Math.max(0, Number(merged.attendance.lateDeduction) || 0);
+  const rawAttStart = merged.attendance.startDate;
+  merged.attendance.startDate = isIsoDateKey(rawAttStart)
+    ? String(rawAttStart).trim()
+    : DEFAULT_APP_SETTINGS.attendance.startDate;
 
-  merged.discipline.enabled = Boolean(merged.discipline.enabled);
-  merged.discipline.startDate = String(merged.discipline.startDate || DEFAULT_APP_SETTINGS.discipline.startDate);
+  merged.discipline.enabled = coerceEnabledFlag(
+    merged.discipline.enabled,
+    DEFAULT_APP_SETTINGS.discipline.enabled
+  );
+  const rawStart = merged.discipline.startDate;
+  merged.discipline.startDate = isIsoDateKey(rawStart)
+    ? String(rawStart).trim()
+    : DEFAULT_APP_SETTINGS.discipline.startDate;
   merged.discipline.uniformDeduction = Math.max(0, Number(merged.discipline.uniformDeduction) || 0);
   merged.discipline.hairDeduction = Math.max(0, Number(merged.discipline.hairDeduction) || 0);
   merged.discipline.nailsDeduction = Math.max(0, Number(merged.discipline.nailsDeduction) || 0);
@@ -64,6 +90,11 @@ export function normalizeAppSettings(raw) {
   merged.inspection.customDates = Array.isArray(merged.inspection.customDates)
     ? parseIsoDateKeys(merged.inspection.customDates.join('\n'))
     : [];
+  const kickoffDate = String(merged.discipline.startDate || '').trim();
+  if (kickoffDate && !merged.inspection.customDates.includes(kickoffDate)) {
+    merged.inspection.customDates.push(kickoffDate);
+    merged.inspection.customDates.sort();
+  }
 
   merged.attendanceWarning.thresholdPercent = Math.min(
     100,
@@ -73,6 +104,10 @@ export function normalizeAppSettings(raw) {
   merged.scoring.startingScore = Math.max(
     1,
     Number(merged.scoring.startingScore) || DEFAULT_APP_SETTINGS.scoring.startingScore
+  );
+  merged.scoring.communityServiceThreshold = Math.min(
+    merged.scoring.startingScore,
+    Math.max(0, Number(merged.scoring.communityServiceThreshold) ?? DEFAULT_APP_SETTINGS.scoring.communityServiceThreshold)
   );
 
   return merged;
@@ -120,11 +155,15 @@ function setMemoryCache(settings) {
  * @param {{ force?: boolean }} [opts]
  */
 export async function initAppSettings(opts = {}) {
-  if (memoryCache && !opts.force) return memoryCache;
+  if (firestoreSettingsLoaded && memoryCache && !opts.force) return memoryCache;
+
+  if (opts.force) {
+    firestoreSettingsLoaded = false;
+  }
 
   const cached = readLocalCache();
-  if (cached && !opts.force) {
-    memoryCache = cached;
+  if (!memoryCache) {
+    memoryCache = cached || normalizeAppSettings(null);
   }
 
   try {
@@ -148,6 +187,7 @@ export async function initAppSettings(opts = {}) {
 
     const normalized = normalizeAppSettings(data);
     setMemoryCache(normalized);
+    firestoreSettingsLoaded = true;
     return normalized;
   } catch (err) {
     console.warn('[settings] Firestore load failed, using cache/defaults', err);
@@ -173,6 +213,7 @@ export async function saveAppSettings(settings) {
     { merge: true }
   );
   setMemoryCache(normalized);
+  firestoreSettingsLoaded = true;
   return normalized;
 }
 
@@ -182,6 +223,10 @@ export function getDefaultAppSettings() {
 
 export function getStartingScore() {
   return getAppSettings().scoring.startingScore;
+}
+
+export function getCommunityServiceThreshold() {
+  return getAppSettings().scoring.communityServiceThreshold;
 }
 
 export function getDisciplineStartDate() {
@@ -194,6 +239,20 @@ export function getParentMeetingThresholdPercent() {
 
 export function isAttendanceScoringEnabled() {
   return getAppSettings().attendance.enabled;
+}
+
+export function getAttendanceScoringStartDate() {
+  return getAppSettings().attendance.startDate;
+}
+
+/**
+ * Whether absent/late point deductions apply on this date.
+ * @param {string} [date] yyyy-MM-dd
+ */
+export function canApplyAttendancePenaltyOnDate(date) {
+  if (!isAttendanceScoringEnabled()) return false;
+  const start = getAttendanceScoringStartDate();
+  return !start || String(date || '') >= start;
 }
 
 export function isDisciplineScoringEnabled() {
@@ -221,6 +280,35 @@ export function canRecordDisciplineOnDate(date, settings = getAppSettings()) {
   if (!dateStr) return false;
   if (dateStr >= settings.discipline.startDate) return true;
   return isInspectionDayFromSettings(dateStr, settings);
+}
+
+/**
+ * Show discipline chips + inspection banner on the check page (inspection days only).
+ * @param {string} [date] yyyy-MM-dd
+ * @param {AppSettings} [settings]
+ */
+export function canShowDisciplineOnCheck(date, settings = getAppSettings()) {
+  if (!settings.discipline.enabled) return false;
+  const dateStr = String(date || '');
+  if (!dateStr) return false;
+  return isInspectionDayFromSettings(dateStr, settings);
+}
+
+/**
+ * Active discipline rule ids from configured deduction amounts (ignores enabled flag).
+ * Used for absent-on-inspection auto-fail when settings cache may be stale.
+ * @param {AppSettings} [settings]
+ * @returns {string[]}
+ */
+export function getDisciplineDeductionRuleIds(settings = getAppSettings()) {
+  const d = settings.discipline;
+  /** @type {string[]} */
+  const ids = [];
+  if (Math.abs(Number(d.uniformDeduction) || 0) > 0) ids.push('uniform');
+  if (Math.abs(Number(d.hairDeduction) || 0) > 0) ids.push('hair');
+  if (Math.abs(Number(d.nailsDeduction) || 0) > 0) ids.push('nails');
+  if (Math.abs(Number(d.accessoryDeduction) || 0) > 0) ids.push('accessories');
+  return ids;
 }
 
 /**
@@ -304,12 +392,36 @@ export function getFirstSchoolDayOfMonth(yearMonth) {
 }
 
 /**
+ * Monthly inspection date for a calendar month (first school day, or discipline start if later in kickoff month).
+ * @param {string} yearMonth YYYY-MM
+ * @param {AppSettings} [settings]
+ */
+export function getMonthlyInspectionDate(yearMonth, settings = getAppSettings()) {
+  const insp = settings.inspection;
+  if (insp.inspectionDayType === 'day_of_month') {
+    return `${yearMonth}-${String(insp.dayOfMonth).padStart(2, '0')}`;
+  }
+  const firstSchool = getFirstSchoolDayOfMonth(yearMonth);
+  const startDate = String(settings.discipline?.startDate || '');
+  if (startDate && startDate.slice(0, 7) === yearMonth && startDate > firstSchool) {
+    return startDate;
+  }
+  return firstSchool;
+}
+
+/**
  * @param {string} date yyyy-MM-dd
  * @param {AppSettings} [settings]
  */
 export function isInspectionDayFromSettings(date, settings = getAppSettings()) {
   const insp = settings.inspection;
   const dateStr = String(date || '');
+  if (!dateStr) return false;
+
+  const kickoffDate = String(settings.discipline?.startDate || '').trim();
+  if (kickoffDate && dateStr === kickoffDate) {
+    return true;
+  }
 
   if (insp.mode === 'custom') {
     return (insp.customDates || []).includes(dateStr);
@@ -328,7 +440,23 @@ export function isInspectionDayFromSettings(date, settings = getAppSettings()) {
   }
 
   const yearMonth = dateStr.slice(0, 7);
-  return dateStr === getFirstSchoolDayOfMonth(yearMonth);
+  if (dateStr === getMonthlyInspectionDate(yearMonth, settings)) {
+    return true;
+  }
+
+  // Monthly on the same day-of-month as discipline.startDate (e.g. every 5th after kickoff).
+  if (kickoffDate && dateStr >= kickoffDate) {
+    const startDom = Number(kickoffDate.slice(8, 10));
+    if (startDom && Number(dateStr.slice(8, 10)) === startDom) {
+      return true;
+    }
+  }
+
+  if (insp.dayOfMonth && Number(dateStr.slice(8, 10)) === insp.dayOfMonth) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -354,14 +482,31 @@ export function listUpcomingInspectionDates(settings = getAppSettings(), monthsA
         if (isInspectionDayFromSettings(key, settings)) dates.add(key);
       }
     } else {
-      let key = '';
-      if (insp.inspectionDayType === 'day_of_month') {
-        key = `${ym}-${String(insp.dayOfMonth).padStart(2, '0')}`;
-      } else {
-        key = getFirstSchoolDayOfMonth(ym);
-      }
-      dates.add(key);
+      dates.add(getMonthlyInspectionDate(ym, settings));
     }
   }
   return [...dates].sort();
+}
+
+/**
+ * All inspection dates within an inclusive yyyy-MM-dd range.
+ * @param {string} from
+ * @param {string} to
+ * @param {AppSettings} [settings]
+ * @returns {string[]}
+ */
+export function listInspectionDatesInRange(from, to, settings = getAppSettings()) {
+  const start = String(from || '').trim();
+  const end = String(to || '').trim();
+  if (!start || !end || start > end) return [];
+
+  const dates = [];
+  let cursor = start;
+  while (cursor <= end) {
+    if (isInspectionDayFromSettings(cursor, settings)) dates.push(cursor);
+    const next = new Date(`${cursor}T12:00:00`);
+    next.setDate(next.getDate() + 1);
+    cursor = formatDateInBangkok(next);
+  }
+  return dates;
 }

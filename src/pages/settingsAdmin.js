@@ -76,6 +76,11 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
         <h2 class="settings-admin-card__title">${escapeHtml(t('settingsAdmin.attendanceTitle'))}</h2>
         <p class="settings-admin-card__desc">${escapeHtml(t('settingsAdmin.attendanceDesc'))}</p>
         ${switchRow(t('settingsAdmin.attendanceEnabled'), t('settingsAdmin.attendanceEnabledHint'), 'attEnabled', draft.attendance.enabled)}
+        <label class="settings-admin-row field">
+          <span class="settings-admin-row__label">${escapeHtml(t('settingsAdmin.attendanceStart'))}</span>
+          <p class="settings-admin-row__hint">${escapeHtml(t('settingsAdmin.attendanceStartHint'))}</p>
+          <input type="date" class="input-field" id="attStart" value="${escapeHtml(draft.attendance.startDate)}" />
+        </label>
         ${numberRow(t('settingsAdmin.absentDeduction'), 'attAbsent', draft.attendance.absentDeduction, 0, 50)}
         ${numberRow(t('settingsAdmin.lateDeduction'), 'attLate', draft.attendance.lateDeduction, 0, 50)}
       </section>
@@ -164,6 +169,7 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
     return normalizeAppSettings({
       attendance: {
         enabled: root.querySelector('#attEnabled')?.checked ?? true,
+        startDate: root.querySelector('#attStart')?.value || defaults.attendance.startDate,
         absentDeduction: Number(root.querySelector('#attAbsent')?.value),
         lateDeduction: Number(root.querySelector('#attLate')?.value)
       },

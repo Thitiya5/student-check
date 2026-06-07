@@ -327,22 +327,33 @@ export async function pingGas() {
 }
 
 /**
- * Server-side login — PIN verified in Apps Script (not exposed via getTeachers).
- * @param {string} identifier
- * @param {string} [pin]
+ * Admin login — verify TEACHER_NAME + PIN on server.
+ * @param {string} teacherName
+ * @param {string} pin
  */
-export async function verifyTeacherLoginGas(identifier, pin = '') {
-  const value = String(identifier ?? '').trim();
-  return gasRequest('verifyTeacherLogin', {
-    teacherName: value,
-    username: value,
-    login: value,
+export async function verifyAdminLoginByNameGas(teacherName, pin = '') {
+  return gasRequest('verifyAdminLoginByName', {
+    teacherName: String(teacherName ?? '').trim(),
+    adminTeacherName: String(teacherName ?? '').trim(),
+    pin: String(pin ?? '').trim(),
+    adminPin: String(pin ?? '').trim()
+  });
+}
+
+/**
+ * Pastoral teacher PIN check (behavior writes).
+ * @param {string} teacherName
+ * @param {string} pin
+ */
+export async function verifyPastoralPinByNameGas(teacherName, pin = '') {
+  return gasRequest('verifyPastoralPinByName', {
+    teacherName: String(teacherName ?? '').trim(),
     pin: String(pin ?? '').trim()
   });
 }
 
 /**
- * Whether login should show PIN field (no PIN value returned).
+ * Whether login should show PIN field for this name (admin only).
  * @param {string} teacherName
  */
 export async function teacherRequiresPinGas(teacherName) {
@@ -352,7 +363,7 @@ export async function teacherRequiresPinGas(teacherName) {
 }
 
 /**
- * Change current teacher credentials on server.
+ * Admin changes own PIN on server.
  * @param {{ teacherName?: string, username?: string, currentPin?: string, newPin: string, newUsername?: string, forceReset?: boolean }} payload
  */
 export async function changeTeacherPinGas(payload) {
@@ -361,20 +372,30 @@ export async function changeTeacherPinGas(payload) {
     username: String(payload?.username ?? '').trim(),
     currentPin: String(payload?.currentPin ?? '').trim(),
     newPin: String(payload?.newPin ?? '').trim(),
-    newUsername: String(payload?.newUsername ?? '').trim(),
     forceReset: Boolean(payload?.forceReset)
   });
 }
 
-/**
- * Admin resets another teacher's PIN (verified server-side).
- * @param {{ adminUsername: string, adminPin: string, targetUsername: string, newPin?: string }} payload
- */
-export async function adminResetTeacherPinGas(payload) {
-  return gasRequest('adminResetTeacherPin', {
-    adminUsername: String(payload?.adminUsername ?? '').trim(),
-    adminPin: String(payload?.adminPin ?? '').trim(),
-    targetUsername: String(payload?.targetUsername ?? '').trim(),
-    newPin: String(payload?.newPin ?? '').trim()
-  });
+export async function adminCreateTeacherGas(payload) {
+  return gasRequest('adminCreateTeacher', payload);
+}
+
+export async function adminUpdateTeacherGas(payload) {
+  return gasRequest('adminUpdateTeacher', payload);
+}
+
+export async function adminDeactivateTeacherGas(payload) {
+  return gasRequest('adminDeactivateTeacher', payload);
+}
+
+export async function adminCreateStudentGas(payload) {
+  return gasRequest('adminCreateStudent', payload);
+}
+
+export async function adminUpdateStudentGas(payload) {
+  return gasRequest('adminUpdateStudent', payload);
+}
+
+export async function adminDeleteStudentGas(payload) {
+  return gasRequest('adminDeleteStudent', payload);
 }

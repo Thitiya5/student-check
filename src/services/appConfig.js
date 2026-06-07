@@ -35,8 +35,3 @@ export function loadConfig() {
   }
   return { gasUrl, gasSecret, gasDirectUrl };
 }
-
-/** PIN login only when VITE_ENABLE_PIN_LOGIN=true in build .env */
-export function isPinLoginEnabled() {
-  return import.meta.env.VITE_ENABLE_PIN_LOGIN === 'true';
-}

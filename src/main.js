@@ -6,20 +6,10 @@ import { updateDocumentBranding } from './config/schoolBranding.js';
 import { renderAppBrandStrip } from './components/schoolLogo.js';
 import { initTheme } from './services/theme.js';
 import { renderLoginPage } from './pages/login.js';
-import { renderDashboardPage } from './pages/dashboard.js';
-import { renderCheckPage } from './pages/check.js';
-import { renderHistoryPage } from './pages/history.js';
-import { renderStudentsPage } from './pages/students.js';
-import { renderReportsPage } from './pages/reports.js';
-import { renderSettingsPage } from './pages/settings.js';
-import { renderChangePinPage } from './pages/changePin.js';
-import { renderAdminPage } from './pages/admin.js';
-import { renderAdminTeachersPage } from './pages/adminTeachers.js';
-import { renderStudentProfilePage } from './pages/studentProfile.js';
-import { renderInspectionPage } from './pages/inspection.js';
-import { renderSettingsAdminPage } from './pages/settingsAdmin.js';
+import { renderLoading } from './utils/ui.js';
+import { escapeHtml } from './utils/html.js';
 import { initAppSettings } from './services/appSettingsService.js';
-import { syncClassPointTransactions } from './services/studentPointsService.js';
+import { syncClassPointTransactions, enrichStudentsForPointSync } from './services/studentPointsService.js';
 import { renderBottomNav } from './components/navbar.js';
 import { openConfirmModal } from './components/confirmModal.js';
 import { loadAppState, saveAppState, getTodayDateKey, getDefaultAppState, STORAGE_KEY } from './data/mock.js';
@@ -40,9 +30,17 @@ import {
 import { recordLoginTime, clearLastLoginTime } from './services/session.js';
 import { verifyFirestoreConnection } from './services/firebaseClient.js';
 import { isGasConfigured, pingGas } from './services/googleAppsScript.js';
-import { isPinLoginEnabled } from './services/appConfig.js';
 import { clearStudentsCache } from './services/studentsService.js';
-import { loadTeacherAuthSession, canAccessLevelRoom, isAdminSession, saveTeacherAuthSession } from './services/teacherAuth.js';
+import {
+  loadTeacherAuthSession,
+  canAccessLevelRoom,
+  isAdminSession,
+  canManageBehaviorSession,
+  canViewPointsReportSession,
+  canReturnDisciplinePointsSession,
+  saveTeacherAuthSession
+} from './services/teacherAuth.js';
+import { canViewDisciplineReportSession } from './services/disciplineReportService.js';
 import { resolveTeacherLogin, refreshTeacherSessionFromSheet, changeTeacherPin } from './services/teachersService.js';
 import { normalizeAttendanceStatus, CHECK_DEFAULT_STATUS } from './data/attendanceStatuses.js';
 import { disciplineEntryToFirestore } from './data/disciplineChecks.js';
@@ -101,7 +99,8 @@ function syncTeacherFromStorage() {
     state.teacherRole = auth.role;
     state.assignedClasses = auth.assignedClasses;
     state.isAdmin = auth.isAdmin;
-    state.mustChangePin = Boolean(auth.mustChangePin);
+    state.isPastoral = auth.isPastoral;
+    state.mustChangePin = false;
   }
 }
 
@@ -153,7 +152,11 @@ function bindPageCleanup(pageContent) {
     pageContent.__settingsCleanup,
     pageContent.__studentProfileCleanup,
     pageContent.__inspectionCleanup,
-    pageContent.__settingsAdminCleanup
+    pageContent.__behaviorCleanup,
+    pageContent.__pointsReportCleanup,
+    pageContent.__disciplineReportCleanup,
+    pageContent.__settingsAdminCleanup,
+    pageContent.__menuCleanup
   ].filter((fn) => typeof fn === 'function');
 
   if (cleanups.length) {
@@ -275,7 +278,7 @@ async function loginUser(teacherName, pin = '') {
     teacherRole: session.role,
     assignedClasses: session.assignedClasses,
     isAdmin: session.isAdmin,
-    mustChangePin: Boolean(session.mustChangePin),
+    mustChangePin: false,
     currentLevel: '',
     currentRoom: '',
     classConfirmed: false
@@ -284,8 +287,7 @@ async function loginUser(teacherName, pin = '') {
   applyTodayToState();
   saveAppState(state);
   authRedirectPending = false;
-  window.location.hash =
-    isPinLoginEnabled() && session.mustChangePin ? '/change-pin' : '/dashboard';
+  window.location.hash = '/dashboard';
 }
 
 function performLogout() {
@@ -319,6 +321,12 @@ function requestLogout() {
 }
 
 /** Persist class picker without re-rendering (keeps in-progress attendance UI). */
+function persistCheckDate(dateKey) {
+  const date = String(dateKey || getTodayDateKey()).trim();
+  state = { ...state, currentDate: date };
+  saveAppState(state);
+}
+
 function persistClassSelection(level, room, { classConfirmed } = {}) {
   state = {
     ...state,
@@ -385,19 +393,24 @@ async function submitAttendance(
     return false;
   }
 
-  const studentsPayload = classStudents.map((s) => {
-    const sid = String(s.student_id);
-    const disc = discipline[sid] || { flags: [], behaviors: [], note: '' };
-    const status = normalizeAttendanceStatus(attendance[sid] || CHECK_DEFAULT_STATUS);
-    return {
-      student_id: sid,
-      first_name: String(s.first_name ?? ''),
-      last_name: String(s.last_name ?? ''),
-      student_name: `${String(s.first_name ?? '').trim()} ${String(s.last_name ?? '').trim()}`.trim(),
-      status,
-      ...disciplineEntryToFirestore(disc)
-    };
-  });
+  await initAppSettings();
+
+  const studentsPayload = enrichStudentsForPointSync(
+    classStudents.map((s) => {
+      const sid = String(s.student_id);
+      const disc = discipline[sid] || { flags: [], behaviors: [], note: '' };
+      const status = normalizeAttendanceStatus(attendance[sid] || CHECK_DEFAULT_STATUS);
+      return {
+        student_id: sid,
+        first_name: String(s.first_name ?? ''),
+        last_name: String(s.last_name ?? ''),
+        student_name: `${String(s.first_name ?? '').trim()} ${String(s.last_name ?? '').trim()}`.trim(),
+        status,
+        ...disciplineEntryToFirestore(disc)
+      };
+    }),
+    dateKey
+  );
 
   const classKey = buildAttendanceClassKey(level, room);
   const savePayload = {
@@ -428,21 +441,43 @@ async function submitAttendance(
       ...savePayload
     });
     notifyOfflineStatus();
+    state = {
+      ...state,
+      attendance,
+      teacherName: persistTeacherName(teacherName),
+      currentDate: dateKey,
+      currentLevel: level,
+      currentRoom: room,
+      classConfirmed: navigateAfterSave ? true : state.classConfirmed
+    };
+    saveAppState(state);
     showToast(t('offline.savedLocally'));
-  } else {
-    try {
-      await saveClassAttendance(savePayload);
-      await syncPoints();
-      void flushPendingAttendance();
-    } catch (err) {
-      console.error('[attendance] submit failed, queueing:', err);
-      await enqueuePendingAttendance({
-        id: buildPendingId(savePayload),
-        ...savePayload
-      });
-      notifyOfflineStatus();
-      showToast(t('offline.savedQueued'));
+    if (navigateAfterSave) {
+      window.location.hash = '/dashboard';
+      return true;
     }
+    renderApp();
+    return true;
+  }
+
+  try {
+    await saveClassAttendance(savePayload);
+  } catch (err) {
+    console.error('[attendance] save failed, queueing:', err);
+    await enqueuePendingAttendance({
+      id: buildPendingId(savePayload),
+      ...savePayload
+    });
+    notifyOfflineStatus();
+    showToast(t('offline.savedQueued'));
+    return false;
+  }
+  try {
+    await syncPoints();
+    void flushPendingAttendance();
+  } catch (err) {
+    console.error('[attendance] point sync failed:', err);
+    showToast(t('check.pointSyncFailed'));
   }
 
   state = {
@@ -467,6 +502,135 @@ async function submitAttendance(
 }
 
 function renderApp() {
+  void renderAppAsync();
+}
+
+let renderAppSeq = 0;
+
+/**
+ * @param {HTMLElement} pageContent
+ * @param {string} currentRoute
+ * @param {object} pageCtx
+ */
+async function renderRoutePage(pageContent, currentRoute, pageCtx) {
+  switch (currentRoute) {
+    case '/dashboard': {
+      const { renderDashboardPage } = await import('./pages/dashboard.js');
+      renderDashboardPage(pageContent, pageCtx);
+      break;
+    }
+    case '/check': {
+      const { renderCheckPage } = await import('./pages/check.js');
+      renderCheckPage(pageContent, {
+        ...pageCtx,
+        submitAttendance,
+        loadClassAttendance,
+        persistClassSelection,
+        persistCheckDate
+      });
+      break;
+    }
+    case '/history': {
+      const { renderHistoryPage } = await import('./pages/history.js');
+      renderHistoryPage(pageContent, pageCtx);
+      break;
+    }
+    case '/students': {
+      const { renderStudentsPage } = await import('./pages/students.js');
+      renderStudentsPage(pageContent, pageCtx);
+      break;
+    }
+    case '/reports': {
+      const { renderReportsPage } = await import('./pages/reports.js');
+      renderReportsPage(pageContent, pageCtx);
+      break;
+    }
+    case '/menu': {
+      const { renderMenuPage } = await import('./pages/menu.js');
+      renderMenuPage(pageContent, pageCtx);
+      break;
+    }
+    case '/admin': {
+      const { renderAdminPage } = await import('./pages/admin.js');
+      renderAdminPage(pageContent, pageCtx);
+      break;
+    }
+    case '/admin-teachers': {
+      pageContent.classList.add('page-content--admin-teachers');
+      const { renderAdminTeachersPage } = await import('./pages/adminTeachers.js');
+      renderAdminTeachersPage(pageContent, pageCtx);
+      break;
+    }
+    case '/admin-students': {
+      pageContent.classList.add('page-content--admin-students');
+      const { renderAdminStudentsPage } = await import('./pages/adminStudents.js');
+      renderAdminStudentsPage(pageContent, pageCtx);
+      break;
+    }
+    case '/inspection': {
+      const { renderInspectionPage } = await import('./pages/inspection.js');
+      renderInspectionPage(pageContent, pageCtx);
+      break;
+    }
+    case '/admin-discipline': {
+      const { renderDisciplineRecordsPage } = await import('./pages/disciplineRecords.js');
+      renderDisciplineRecordsPage(pageContent, pageCtx);
+      break;
+    }
+    case '/behavior': {
+      const { renderBehaviorPage } = await import('./pages/behavior.js');
+      renderBehaviorPage(pageContent, pageCtx);
+      break;
+    }
+    case '/points-report': {
+      const { renderPointsReportPage } = await import('./pages/pointsReport.js');
+      renderPointsReportPage(pageContent, pageCtx);
+      break;
+    }
+    case '/discipline-report': {
+      const { renderDisciplineReportPage } = await import('./pages/disciplineReport.js');
+      renderDisciplineReportPage(pageContent, pageCtx);
+      break;
+    }
+    case '/student-profile': {
+      const { renderStudentProfilePage } = await import('./pages/studentProfile.js');
+      renderStudentProfilePage(pageContent, {
+        ...pageCtx,
+        state: { ...state, profileStudent: readProfileStudentFromStorage() }
+      });
+      break;
+    }
+    case '/settings': {
+      const { renderSettingsPage } = await import('./pages/settings.js');
+      renderSettingsPage(pageContent, pageCtx);
+      break;
+    }
+    case '/change-pin': {
+      const { renderChangePinPage } = await import('./pages/changePin.js');
+      renderChangePinPage(pageContent, {
+        ...pageCtx,
+        onSubmit: async ({ currentPin, newPin }) => {
+          const auth = state.teacherAuth || loadTeacherAuthSession();
+          if (!auth) throw new Error(t('toast.loginRequired'));
+          if (!isAdminSession(auth)) throw new Error(t('admin.denied'));
+          await changeTeacherPin(auth, { currentPin, newPin });
+          navigateTo('/settings');
+        }
+      });
+      break;
+    }
+    case '/settings-admin': {
+      pageContent.classList.add('page-content--settings-admin');
+      const { renderSettingsAdminPage } = await import('./pages/settingsAdmin.js');
+      renderSettingsAdminPage(pageContent, pageCtx);
+      break;
+    }
+    default:
+      pageContent.innerHTML = `<div class="ui-empty"><p class="ui-empty__title">${t('common.notFound')}</p></div>`;
+  }
+}
+
+async function renderAppAsync() {
   syncTeacherFromStorage();
   applyTodayToState();
   runPageCleanup();
@@ -487,18 +651,13 @@ function renderApp() {
   }
 
   if (loggedIn && currentRoute === '/login') {
-    window.location.hash =
-      isPinLoginEnabled() && state.mustChangePin ? '/change-pin' : '/dashboard';
+    window.location.hash = '/dashboard';
     return;
   }
 
-  if (
-    isPinLoginEnabled() &&
-    loggedIn &&
-    state.mustChangePin &&
-    currentRoute !== '/change-pin'
-  ) {
-    window.location.hash = '/change-pin';
+  if (loggedIn && currentRoute === '/change-pin' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
+    showToast(t('admin.denied'));
+    window.location.hash = '/dashboard';
     return;
   }
 
@@ -510,6 +669,12 @@ function renderApp() {
 
   if (loggedIn && currentRoute === '/inspection' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
     showToast(t('admin.denied'));
+    window.location.hash = '/dashboard';
+    return;
+  }
+
+  if (loggedIn && currentRoute === '/admin-discipline' && !canReturnDisciplinePointsSession(state.teacherAuth || loadTeacherAuthSession())) {
+    showToast(t('disciplineRecords.denied'));
     window.location.hash = '/dashboard';
     return;
   }
@@ -526,6 +691,30 @@ function renderApp() {
     return;
   }
 
+  if (loggedIn && currentRoute === '/admin-students' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
+    showToast(t('admin.denied'));
+    window.location.hash = '/dashboard';
+    return;
+  }
+
+  if (loggedIn && currentRoute === '/behavior' && !canManageBehaviorSession(state.teacherAuth || loadTeacherAuthSession())) {
+    showToast(t('behavior.denied'));
+    window.location.hash = '/dashboard';
+    return;
+  }
+
+  if (loggedIn && currentRoute === '/points-report' && !canViewPointsReportSession(state.teacherAuth || loadTeacherAuthSession())) {
+    showToast(t('pointsReport.denied'));
+    window.location.hash = '/dashboard';
+    return;
+  }
+
+  if (loggedIn && currentRoute === '/discipline-report' && !canViewDisciplineReportSession(state.teacherAuth || loadTeacherAuthSession())) {
+    showToast(t('disciplineReport.denied'));
+    window.location.hash = '/dashboard';
+    return;
+  }
+
   authRedirectPending = false;
   const shell = document.createElement('div');
   shell.className = 'page-shell';
@@ -533,7 +722,7 @@ function renderApp() {
   const pageContent = document.createElement('main');
   pageContent.className = [
     'page-content',
-    currentRoute === '/check' ? 'has-fixed-save' : '',
+    currentRoute === '/check' || currentRoute === '/behavior' ? 'has-fixed-save' : '',
     currentRoute === '/login' ? 'page-content--login' : '',
     currentRoute === '/dashboard' ? 'page-content--dashboard' : ''
   ]
@@ -568,68 +757,10 @@ function renderApp() {
     return;
   }
 
-  if (currentRoute === '/dashboard') {
-    renderDashboardPage(pageContent, pageCtx);
-  } else if (currentRoute === '/check') {
-    renderCheckPage(pageContent, {
-      ...pageCtx,
-      submitAttendance,
-      loadClassAttendance,
-      persistClassSelection
-    });
-  } else if (currentRoute === '/history') {
-    renderHistoryPage(pageContent, pageCtx);
-  } else if (currentRoute === '/students') {
-    renderStudentsPage(pageContent, pageCtx);
-  } else if (currentRoute === '/reports') {
-    renderReportsPage(pageContent, pageCtx);
-  } else if (currentRoute === '/admin') {
-    renderAdminPage(pageContent, pageCtx);
-  } else if (currentRoute === '/admin-teachers') {
-    pageContent.classList.add('page-content--admin-teachers');
-    renderAdminTeachersPage(pageContent, pageCtx);
-  } else if (currentRoute === '/inspection') {
-    renderInspectionPage(pageContent, pageCtx);
-  } else if (currentRoute === '/student-profile') {
-    renderStudentProfilePage(pageContent, {
-      ...pageCtx,
-      state: { ...state, profileStudent: readProfileStudentFromStorage() }
-    });
-  } else if (currentRoute === '/settings') {
-    renderSettingsPage(pageContent, pageCtx);
-  } else if (currentRoute === '/change-pin') {
-    renderChangePinPage(pageContent, {
-      ...pageCtx,
-      onSubmit: async ({ currentPin, newPin, newUsername }) => {
-        const auth = state.teacherAuth || loadTeacherAuthSession();
-        if (!auth) throw new Error(t('toast.loginRequired'));
-        await changeTeacherPin(auth, {
-          currentPin,
-          newPin,
-          newUsername,
-          forceReset: Boolean(auth.mustChangePin || state.mustChangePin)
-        });
-        const nextAuth = { ...auth, mustChangePin: false };
-        saveTeacherAuthSession(nextAuth);
-        state = { ...state, teacherAuth: nextAuth, mustChangePin: false, username: nextAuth.username || state.username || '' };
-        saveAppState(state);
-        navigateTo('/settings');
-      }
-    });
-  } else if (currentRoute === '/settings-admin') {
-    pageContent.classList.add('page-content--settings-admin');
-    renderSettingsAdminPage(pageContent, pageCtx);
-  } else {
-    pageContent.innerHTML = `<div class="ui-empty"><p class="ui-empty__title">${t('common.notFound')}</p></div>`;
-  }
-
-  bindPageCleanup(pageContent);
-
-  pageContent.insertAdjacentHTML('afterbegin', renderAppBrandStrip());
-
+  const authSession = state.teacherAuth || loadTeacherAuthSession();
   const navbar = document.createElement('div');
   navbar.innerHTML = renderBottomNav(currentRoute, {
-    isAdmin: isAdminSession(state.teacherAuth || loadTeacherAuthSession())
+    showPointsReport: canViewPointsReportSession(authSession)
   });
   navbar.addEventListener('click', (e) => {
     const button = e.target.closest('.bottom-nav-button');
@@ -638,11 +769,26 @@ function renderApp() {
     }
   });
 
+  pageContent.innerHTML = renderLoading(t('common.loading'));
+
   shell.insertAdjacentHTML('afterbegin', renderOfflineBarMarkup());
   shell.appendChild(pageContent);
   shell.appendChild(navbar);
   app.innerHTML = '';
   app.appendChild(shell);
   bindOfflineBar(showToast);
+
+  const renderSeq = ++renderAppSeq;
+  try {
+    await renderRoutePage(pageContent, currentRoute, pageCtx);
+  } catch (err) {
+    if (renderSeq !== renderAppSeq) return;
+    console.error('[app] route render failed', err);
+    pageContent.innerHTML = `<div class="ui-empty"><p class="ui-empty__title">${t('common.loadFailed')}</p><p class="ui-empty__hint">${escapeHtml(String(err?.message || ''))}</p></div>`;
+  }
+  if (renderSeq !== renderAppSeq) return;
+
+  bindPageCleanup(pageContent);
+  pageContent.insertAdjacentHTML('afterbegin', renderAppBrandStrip());
   restoreScrollForRoute(getRoutePath(currentRoute));
 }

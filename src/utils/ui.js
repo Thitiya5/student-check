@@ -1,6 +1,7 @@
 ﻿import { escapeHtml } from './html.js';
+import { t } from '../i18n/index.js';
 
-export function renderLoading(message = 'กำลังโหลด...') {
+export function renderLoading(message = t('common.loading')) {
   return [
     '<div class="ui-loading" role="status" aria-live="polite">',
     '<div class="ui-spinner" aria-hidden="true"></div>',
@@ -25,7 +26,7 @@ export function renderError(message, hint = '', retryButtonId = 'uiRetryBtn') {
     '<div class="ui-error">',
     `<p class="ui-empty__title">${escapeHtml(message)}</p>`,
     hintHtml,
-    `<button type="button" class="button-primary ui-retry-btn" id="${escapeHtml(retryButtonId)}">ลองใหม่</button>`,
+    `<button type="button" class="button-primary ui-retry-btn" id="${escapeHtml(retryButtonId)}">${escapeHtml(t('common.retry'))}</button>`,
     '</div>'
   ].join('');
 }

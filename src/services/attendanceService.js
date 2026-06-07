@@ -9,12 +9,13 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from './firebaseClient.js';
-import { getTodayDate } from '../utils/dateIso.js';
+import { getTodayDate, chunkDateRange } from '../utils/dateIso.js';
 import { normalizeAttendanceStatus } from '../data/attendanceStatuses.js';
 import { parseDisciplineFromRecord } from '../data/disciplineChecks.js';
 import {
   filterRowsByAssignedClasses,
   isAdminSession,
+  isSchoolWideViewSession,
   getHomeroomClassKeys,
   canAccessClass
 } from './teacherAuth.js';
@@ -57,6 +58,14 @@ function mapAttendanceDoc(docSnap) {
     disciplineBehaviors: Array.isArray(data.disciplineBehaviors) ? data.disciplineBehaviors : [],
     disciplineAdjust: Number(data.disciplineAdjust) || 0,
     disciplineNote: String(data.disciplineNote ?? ''),
+    disciplineWaived: Boolean(data.disciplineWaived),
+    disciplineReturnedBy: String(data.disciplineReturnedBy ?? ''),
+    disciplineReturnedAt: (() => {
+      const raw = data.disciplineReturnedAt;
+      if (!raw) return null;
+      if (typeof raw?.toDate === 'function') return raw.toDate().toISOString();
+      return String(raw);
+    })(),
     createdAt: createdAt ? createdAt.toISOString() : null
   };
 }
@@ -354,6 +363,14 @@ export async function saveClassAttendance({ classKey, teacherName, attendanceDat
             : [],
           disciplineAdjust: Number(student.disciplineAdjust) || 0,
           disciplineNote: String(student.disciplineNote ?? ''),
+          disciplineWaived: Boolean(student.disciplineWaived),
+          disciplineReturnedBy: String(student.disciplineReturnedBy ?? ''),
+          disciplineReturnedAt:
+            student.disciplineReturnedAt != null && student.disciplineReturnedAt !== ''
+              ? student.disciplineReturnedAt
+              : student.disciplineReturnedBy
+                ? serverTimestamp()
+                : null,
           createdAt: serverTimestamp()
         },
         { merge: true }
@@ -469,7 +486,7 @@ export async function queryAttendanceInRangeForSession(session, opts = {}) {
 
   const teacherName = opts.teacherName ? String(opts.teacherName) : '';
 
-  if (!isAdminSession(session)) {
+  if (!isSchoolWideViewSession(session)) {
     const keys = classFilter ? [classFilter] : getHomeroomClassKeys(session);
     if (!keys.length) return [];
     let rows = await queryByClassesAndDateRange(keys, from, to, teacherName || undefined);
@@ -493,6 +510,32 @@ export async function queryAttendanceInRangeForSession(session, opts = {}) {
   }
 
   return queryAttendanceInRange({ from, to, level: opts.level, teacherName });
+}
+
+/**
+ * Full semester (or long range) for session — school-wide uses date chunks; homeroom uses class-scoped queries.
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
+ * @param {{ from: string, to: string }} range
+ */
+export async function querySemesterAttendanceForSession(session, range) {
+  if (!session) return [];
+  const from = String(range.from || getTodayDate());
+  const to = String(range.to || from);
+
+  if (!isSchoolWideViewSession(session)) {
+    return queryAttendanceInRangeForSession(session, { from, to });
+  }
+
+  const chunks = chunkDateRange(from, to, MAX_UNSCOPED_RANGE_DAYS);
+  const parts = await Promise.all(
+    chunks.map(({ from: f, to: t }) =>
+      queryAttendanceInRange({ from: f, to: t }).catch((err) => {
+        console.warn('[attendance] semester chunk failed', f, t, err);
+        return [];
+      })
+    )
+  );
+  return parts.flat().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 }
 
 /**

@@ -1,34 +1,57 @@
 import { t } from '../i18n/index.js';
+import { escapeHtml } from '../utils/html.js';
+
+/** Routes that highlight the Menu tab in bottom nav. */
+export const MENU_SECONDARY_ROUTES = new Set([
+  '/menu',
+  '/history',
+  '/settings',
+  '/students',
+  '/behavior',
+  '/admin',
+  '/admin-teachers',
+  '/admin-students',
+  '/admin-discipline',
+  '/inspection',
+  '/discipline-report',
+  '/settings-admin',
+  '/change-pin',
+  '/student-profile'
+]);
 
 /**
  * @param {string} currentRoute
- * @param {{ isAdmin?: boolean }} [opts]
+ * @param {{ showPointsReport?: boolean }} [opts]
  */
-export function renderBottomNav(currentRoute, { isAdmin = false } = {}) {
+export function renderBottomNav(currentRoute, { showPointsReport = false } = {}) {
+  const routePath = currentRoute.split('?')[0];
   const items = [
     { labelKey: 'nav.home', icon: '◉', target: '/dashboard' },
     { labelKey: 'nav.attendance', icon: '✦', target: '/check' },
-    { labelKey: 'nav.history', icon: '◷', target: '/history' },
+    ...(showPointsReport
+      ? [{ labelKey: 'nav.pointsReport', icon: '▤', target: '/points-report' }]
+      : []),
     { labelKey: 'nav.reports', icon: '⌗', target: '/reports' },
-    ...(isAdmin ? [{ labelKey: 'nav.admin', icon: '⚡', target: '/admin' }] : []),
-    { labelKey: 'nav.settings', icon: '⚙', target: '/settings' }
+    { labelKey: 'nav.menu', icon: '☰', target: '/menu', secondary: true }
   ];
 
-  const navClass = items.length >= 6 ? 'bottom-nav--six' : 'bottom-nav--five';
+  const count = items.length;
+  const navClass = count <= 4 ? 'bottom-nav--four' : 'bottom-nav--five';
 
   return `
     <div class="bottom-nav-wrap">
-      <nav class="bottom-nav ${navClass}">
+      <nav class="bottom-nav ${navClass}" aria-label="${escapeHtml(t('nav.main'))}">
         ${items
-          .map(
-            (item) => `
-          <button type="button" class="bottom-nav-button ${
-            currentRoute === item.target ? 'active' : ''
-          }" data-target="${item.target}">
+          .map((item) => {
+            const active =
+              routePath === item.target ||
+              (item.secondary && MENU_SECONDARY_ROUTES.has(routePath));
+            return `
+          <button type="button" class="bottom-nav-button ${active ? 'active' : ''}" data-target="${item.target}">
             <span class="bottom-nav-icon" aria-hidden="true">${item.icon}</span>
             <span class="bottom-nav-label">${t(item.labelKey)}</span>
-          </button>`
-          )
+          </button>`;
+          })
           .join('')}
       </nav>
     </div>

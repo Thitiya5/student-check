@@ -10,6 +10,7 @@ import {
   getBehaviorBadPoints
 } from '../services/appSettingsService.js';
 import { dedupeRecordsByDate } from './studentAttendanceSummary.js';
+import { resolveBehaviorEntryPoints } from '../data/disciplineChecks.js';
 
 export { isDisciplineActiveDate, canRecordDisciplineOnDate };
 
@@ -145,8 +146,7 @@ export function computeDayBehaviorDelta(entry, date) {
     delta += getDisciplineDeductionPoints(id);
   }
   for (const b of behaviors) {
-    if (b.kind === 'good') delta += getBehaviorGoodPoints();
-    if (b.kind === 'bad') delta += getBehaviorBadPoints();
+    delta += resolveBehaviorEntryPoints(b);
   }
   return delta;
 }

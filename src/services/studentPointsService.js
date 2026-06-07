@@ -16,15 +16,19 @@ import { db } from './firebaseClient.js';
 import { normalizeAttendanceStatus } from '../data/attendanceStatuses.js';
 import {
   getDisciplineChecks,
-  normalizeDisciplineFlags
+  normalizeDisciplineFlags,
+  resolveBehaviorEntryPoints,
+  resolveDisciplineFlagsForScoring,
+  shouldApplyInspectionAutoFail
 } from '../data/disciplineChecks.js';
 import {
   canRecordDisciplineOnDate,
   isAttendanceScoringEnabled,
+  canApplyAttendancePenaltyOnDate,
   getAttendancePenaltyPoints,
   getDisciplineDeductionPoints,
-  getBehaviorGoodPoints,
-  getBehaviorBadPoints
+  getDisciplineDeductionRuleIds,
+  initAppSettings
 } from '../services/appSettingsService.js';
 import { t } from '../i18n/index.js';
 
@@ -139,13 +143,18 @@ export function buildExpectedTransactionsForDay({
   status,
   flags = [],
   behaviors = [],
-  autoFailInspection = false
+  autoFailInspection = false,
+  disciplineWaived = false
 }) {
   /** @type {Array<{ id: string, category: PointCategory, reason: string, points: number, note: string }>} */
   const out = [];
   const key = normalizeAttendanceStatus(status);
+  const waivedOpts = { disciplineWaived };
+  const resolvedFlags = resolveDisciplineFlagsForScoring(status, date, flags, waivedOpts);
+  const autoFail =
+    autoFailInspection || shouldApplyInspectionAutoFail(status, date, resolvedFlags, waivedOpts);
 
-  if (isAttendanceScoringEnabled()) {
+  if (isAttendanceScoringEnabled() && canApplyAttendancePenaltyOnDate(date)) {
     if (key === 'absent') {
       const pts = getAttendancePenaltyPoints('absent');
       if (pts) {
@@ -171,11 +180,17 @@ export function buildExpectedTransactionsForDay({
     }
   }
 
-  if (canRecordDisciplineOnDate(date)) {
+  const needsDiscipline =
+    autoFail || canRecordDisciplineOnDate(date) || (key === 'absent' && resolvedFlags.length > 0);
+
+  if (needsDiscipline) {
     const rules = getDisciplineChecks();
-    const flagSet = autoFailInspection
-      ? rules.map((r) => r.id)
-      : normalizeDisciplineFlags(flags);
+    const deductionIds = getDisciplineDeductionRuleIds();
+    const flagSet = autoFail
+      ? rules.length
+        ? rules.map((r) => r.id)
+        : deductionIds
+      : normalizeDisciplineFlags(resolvedFlags);
 
     for (const flagId of flagSet) {
       const pts = getDisciplineDeductionPoints(flagId);
@@ -189,11 +204,11 @@ export function buildExpectedTransactionsForDay({
       });
     }
 
-    const behaviorList = autoFailInspection ? [] : behaviors;
+    const behaviorList = autoFail ? [] : behaviors;
     for (const b of behaviorList) {
       if (b.kind !== 'good' && b.kind !== 'bad') continue;
       const note = String(b.note ?? '').trim();
-      const pts = b.kind === 'good' ? getBehaviorGoodPoints() : getBehaviorBadPoints();
+      const pts = resolveBehaviorEntryPoints(b);
       if (!pts) continue;
       out.push({
         id: systemTransactionId(studentId, date, 'behavior', b.kind),
@@ -261,6 +276,96 @@ export async function queryStudentTransactions(studentId, from, to) {
  * @param {string} from yyyy-MM-dd
  * @param {string} to yyyy-MM-dd
  */
+/**
+ * Class keys visible to session (optionally one level/room).
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
+ * @param {{ level?: string, room?: string }} [opts]
+ */
+export async function listSessionClassKeys(session, opts = {}) {
+  const { fetchLevelOptions, fetchRoomOptions } = await import('./studentsService.js');
+  const { buildAttendanceClassKey } = await import('./attendanceService.js');
+  const {
+    isSchoolWideViewSession,
+    getViewClassKeys,
+    canViewLevelRoom
+  } = await import('./teacherAuth.js');
+
+  const level = String(opts.level || '').trim();
+  const room = String(opts.room || '').trim();
+  if (level && room) return [buildAttendanceClassKey(level, room)];
+  if (level) {
+    const rooms = await fetchRoomOptions(level);
+    return rooms.map((r) => buildAttendanceClassKey(level, r));
+  }
+
+  if (isSchoolWideViewSession(session)) {
+    const levels = await fetchLevelOptions();
+    const keys = [];
+    for (const lvl of levels) {
+      const rooms = await fetchRoomOptions(lvl);
+      for (const rm of rooms) keys.push(buildAttendanceClassKey(lvl, rm));
+    }
+    return keys;
+  }
+
+  return getViewClassKeys(session) || [];
+}
+
+/**
+ * Point transactions for session scope in a date range.
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
+ */
+export async function queryPointsInRangeForSession(session, opts = {}) {
+  const from = String(opts.from || '');
+  const to = String(opts.to || from);
+  if (!from || !to || !session) return [];
+
+  const { canViewLevelRoom } = await import('./teacherAuth.js');
+  const { buildAttendanceClassKey } = await import('./attendanceService.js');
+
+  let classKeys = opts.classKey
+    ? [String(opts.classKey)]
+    : await listSessionClassKeys(session, { level: opts.level, room: opts.room });
+
+  classKeys = classKeys.filter((key) => {
+    const slash = key.indexOf('/');
+    if (slash < 0) return false;
+    return canViewLevelRoom(session, key.slice(0, slash), key.slice(slash + 1));
+  });
+
+  if (!classKeys.length) return [];
+
+  const chunks = await Promise.all(
+    classKeys.map((k) => queryClassPointsInRange(k, from, to).catch(() => []))
+  );
+  let rows = chunks.flat();
+
+  if (opts.category) {
+    const cat = String(opts.category);
+    rows = rows.filter((r) => (r.category || r.type) === cat);
+  }
+  if (opts.teacherName) {
+    const teacher = String(opts.teacherName);
+    rows = rows.filter((r) => r.teacherName === teacher);
+  }
+  if (opts.deductionsOnly) {
+    rows = rows.filter((r) => Number(r.points) < 0);
+  }
+  if (opts.search) {
+    const q = String(opts.search).toLowerCase();
+    rows = rows.filter(
+      (r) =>
+        r.student_name.toLowerCase().includes(q) || r.student_id.toLowerCase().includes(q)
+    );
+  }
+
+  return rows.sort((a, b) => {
+    const byDate = (b.transactionDate || b.date || '').localeCompare(a.transactionDate || a.date || '');
+    if (byDate) return byDate;
+    return (b.createdAt || '').localeCompare(a.createdAt || '');
+  });
+}
+
 export async function queryClassPointsInRange(classKey, from, to) {
   const q = query(
     colRef(),
@@ -294,8 +399,30 @@ export async function queryRecentStudentTransactions(studentId, max = 150) {
   return snap.docs.map(mapTxnDoc);
 }
 
+/**
+ * Ensure absent + inspection day students carry full discipline flags before save/sync.
+ * @param {Array<object>} students
+ * @param {string} date yyyy-MM-dd
+ */
+export function enrichStudentsForPointSync(students, date) {
+  return (students || []).map((s) => {
+    const status = normalizeAttendanceStatus(s.status);
+    const disciplineWaived = Boolean(s.disciplineWaived);
+    const rawFlags = s.disciplineFlags || s.flags || [];
+    const disciplineFlags = resolveDisciplineFlagsForScoring(status, date, rawFlags, { disciplineWaived });
+    return {
+      ...s,
+      status,
+      disciplineFlags,
+      disciplineWaived
+    };
+  });
+}
+
 export async function syncClassPointTransactions(payload) {
-  const { classKey, date, teacherName, students } = payload;
+  await initAppSettings();
+  const { classKey, date, teacherName } = payload;
+  const students = enrichStudentsForPointSync(payload.students, date);
   const existing = await queryPointsByClassAndDate(classKey, date);
   const existingSystem = existing.filter((r) => r.source === 'system');
 
@@ -315,12 +442,23 @@ export async function syncClassPointTransactions(payload) {
       String(s.student_name ?? '').trim() ||
       `${String(s.first_name ?? '').trim()} ${String(s.last_name ?? '').trim()}`.trim();
 
+    const status = normalizeAttendanceStatus(s.status);
+    const disciplineWaived = Boolean(s.disciplineWaived);
+    const flags = resolveDisciplineFlagsForScoring(
+      status,
+      date,
+      s.disciplineFlags || s.flags || [],
+      { disciplineWaived }
+    );
+    const autoFail = shouldApplyInspectionAutoFail(status, date, flags, { disciplineWaived });
     const expected = buildExpectedTransactionsForDay({
       studentId: sid,
       date,
-      status: s.status,
-      flags: s.disciplineFlags || [],
-      behaviors: s.disciplineBehaviors || s.behaviors || []
+      status,
+      flags,
+      behaviors: s.disciplineBehaviors || s.behaviors || [],
+      autoFailInspection: autoFail,
+      disciplineWaived
     });
     const expectedIds = new Set(expected.map((e) => e.id));
 

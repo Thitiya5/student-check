@@ -4,14 +4,17 @@ import { getTheme, setTheme, onThemeChange } from '../services/theme.js';
 import { getLastLoginTime, formatLastLogin } from '../services/session.js';
 import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeader.js';
 import { bindSettingsInstall } from '../components/installPrompt.js';
-import { loadTeacherAuthSession, isAdminSession } from '../services/teacherAuth.js';
-import { isPinLoginEnabled } from '../services/appConfig.js';
+import { loadTeacherAuthSession, isAdminSession, canManageBehaviorSession, isPastoralSession, canReturnDisciplinePointsSession } from '../services/teacherAuth.js';
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '3.0.1';
 
 export function renderSettingsPage(container, ctx = {}) {
   const { state = {}, onLogout, onToast, onLocaleChange, onNavigate, onBack } = ctx;
-  const admin = isAdminSession(state.teacherAuth || loadTeacherAuthSession());
+  const session = state.teacherAuth || loadTeacherAuthSession();
+  const admin = isAdminSession(session);
+  const pastoral = isPastoralSession(session);
+  const canReturnDiscipline = canReturnDisciplinePointsSession(session);
+  const canBehavior = canManageBehaviorSession(session);
   const teacherName = String(state.teacherName || '').trim();
   const lang = getLanguage();
   const theme = getTheme();
@@ -60,15 +63,50 @@ export function renderSettingsPage(container, ctx = {}) {
     </div>
   </section>
 
-  <section class="settings-group glass-card">
+  ${
+    canReturnDiscipline && pastoral
+      ? `<section class="settings-group glass-card">
+    <h2 class="settings-group__title">${escapeHtml(t('disciplineRecords.title'))}</h2>
+    <button type="button" class="settings-action-row" id="settingsDisciplineRecordsLink">
+      <span class="settings-action-row__text">
+        <span class="settings-action-row__title">${escapeHtml(t('disciplineRecords.open'))}</span>
+        <span class="settings-action-row__hint">${escapeHtml(t('disciplineRecords.settingsHint'))}</span>
+      </span>
+      <span class="settings-action-row__arrow" aria-hidden="true">›</span>
+    </button>
+  </section>`
+      : ''
+  }
+
+  ${
+    canBehavior && pastoral
+      ? `<section class="settings-group glass-card">
+    <h2 class="settings-group__title">${escapeHtml(t('behavior.title'))}</h2>
+    <button type="button" class="settings-action-row" id="settingsBehaviorLink">
+      <span class="settings-action-row__text">
+        <span class="settings-action-row__title">${escapeHtml(t('behavior.open'))}</span>
+        <span class="settings-action-row__hint">${escapeHtml(t('behavior.settingsHint'))}</span>
+      </span>
+      <span class="settings-action-row__arrow" aria-hidden="true">›</span>
+    </button>
+  </section>`
+      : ''
+  }
+
+  ${
+    admin
+      ? `<section class="settings-group glass-card">
     <h2 class="settings-group__title">${escapeHtml(t('changePin.title'))}</h2>
     <button type="button" class="settings-action-row" id="settingsChangePinLink">
       <span class="settings-action-row__text">
         <span class="settings-action-row__title">${escapeHtml(t('changePin.open'))}</span>
+        <span class="settings-action-row__hint">${escapeHtml(t('changePin.adminHint'))}</span>
       </span>
       <span class="settings-action-row__arrow" aria-hidden="true">›</span>
     </button>
-  </section>
+  </section>`
+      : ''
+  }
 
   ${
     admin
@@ -146,14 +184,18 @@ export function renderSettingsPage(container, ctx = {}) {
     onToast?.(t('settings.themeChanged'));
   });
 
+  container.querySelector('#settingsBehaviorLink')?.addEventListener('click', () => {
+    onNavigate?.('/behavior');
+  });
+  container.querySelector('#settingsDisciplineRecordsLink')?.addEventListener('click', () => {
+    onNavigate?.('/admin-discipline');
+  });
   container.querySelector('#settingsAdminLink')?.addEventListener('click', () => {
     onNavigate?.('/settings-admin');
   });
-  if (isPinLoginEnabled()) {
-    container.querySelector('#settingsChangePinLink')?.addEventListener('click', () => {
-      onNavigate?.('/change-pin');
-    });
-  }
+  container.querySelector('#settingsChangePinLink')?.addEventListener('click', () => {
+    onNavigate?.('/change-pin');
+  });
 
   container.querySelector('#settingsLogout')?.addEventListener('click', () => {
     onLogout?.();

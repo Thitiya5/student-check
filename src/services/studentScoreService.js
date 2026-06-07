@@ -4,30 +4,10 @@ import {
   computeParentMeetingRisk
 } from '../utils/pointCalculations.js';
 import { dedupeRecordsByDate, getSemesterDateRange } from '../utils/studentAttendanceSummary.js';
-import { getStartingScore, getParentMeetingThresholdPercent } from './appSettingsService.js';
-import {
-  buildAttendanceClassKey,
-  queryAttendanceInRangeForSession
-} from './attendanceService.js';
-import { isAdminSession } from './teacherAuth.js';
-import { fetchLevelOptions, fetchRoomOptions } from './studentsService.js';
+import { getStartingScore, getParentMeetingThresholdPercent, getCommunityServiceThreshold } from './appSettingsService.js';
+import { querySemesterAttendanceForSession } from './attendanceService.js';
+import { queryPointsInRangeForSession, queryClassPointsInRange } from './studentPointsService.js';
 import { getTodayDate } from '../utils/dateIso.js';
-
-/**
- * All class keys from Google Sheets metadata (LEVEL × ROOM).
- */
-async function fetchAllClassKeys() {
-  const levels = await fetchLevelOptions();
-  /** @type {string[]} */
-  const keys = [];
-  for (const level of levels) {
-    const rooms = await fetchRoomOptions(level);
-    for (const room of rooms) {
-      keys.push(buildAttendanceClassKey(level, room));
-    }
-  }
-  return keys;
-}
 
 /**
  * @param {Array<{ student_id: string }>} rows
@@ -111,31 +91,10 @@ export async function loadAtRiskReportsForSession(session, refDate = getTodayDat
 
   const range = getSemesterDateRange(refDate);
   let attRows = [];
-
-  if (isAdminSession(session)) {
-    try {
-      const classKeys = await fetchAllClassKeys();
-      const chunks = await Promise.all(
-        classKeys.map((classKey) =>
-          queryAttendanceInRangeForSession(session, {
-            from: range.from,
-            to: range.to,
-            classKey
-          }).catch((err) => {
-            console.warn('[atRisk] class query failed', classKey, err);
-            return [];
-          })
-        )
-      );
-      attRows = chunks.flat();
-    } catch (err) {
-      console.warn('[atRisk] admin class list failed', err);
-    }
-  } else {
-    attRows = await queryAttendanceInRangeForSession(session, {
-      from: range.from,
-      to: range.to
-    });
+  try {
+    attRows = await querySemesterAttendanceForSession(session, range);
+  } catch (err) {
+    console.warn('[atRisk] semester attendance load failed', err);
   }
 
   const reports = buildClassScoreReports(attRows, []);
@@ -170,6 +129,56 @@ export function groupAtRiskReportsByClass(reports) {
  */
 export function filterLowScoreReports(reports, threshold = 80) {
   return reports.filter((r) => r.totalScore < threshold);
+}
+
+/** Students who must perform community service (score below threshold). */
+export function filterCommunityServiceReports(reports, threshold = getCommunityServiceThreshold()) {
+  return reports.filter((r) => r.totalScore < threshold);
+}
+
+export function requiresCommunityService(totalScore, threshold = getCommunityServiceThreshold()) {
+  return Number(totalScore) < threshold;
+}
+
+export function getCommunityServiceThresholdScore() {
+  return getCommunityServiceThreshold();
+}
+
+/** Students with any point deduction this period. */
+export function filterStudentsWithDeductions(reports) {
+  return reports.filter((r) => (r.totalDeductions ?? 0) > 0);
+}
+
+/**
+ * Dashboard view — only classes with deducted students, sorted by room.
+ * @param {ReturnType<typeof buildStudentScoreReport>[]} reports
+ * @param {ReturnType<typeof summarizeTransactionsByClass>} [txnByClass]
+ */
+export function summarizeDeductedReportsByClass(reports, txnByClass = new Map()) {
+  /** @type {Map<string, ReturnType<typeof buildStudentScoreReport>[]>} */
+  const byClass = new Map();
+  for (const r of filterStudentsWithDeductions(reports)) {
+    const ck = String(r.classKey || '').trim();
+    if (!ck || ck === '—') continue;
+    if (!byClass.has(ck)) byClass.set(ck, []);
+    byClass.get(ck).push(r);
+  }
+
+  return [...byClass.entries()]
+    .map(([classKey, list]) => {
+      const deductedStudents = sortReportsByScore(list, true);
+      const communityServiceStudents = filterCommunityServiceReports(deductedStudents);
+      const txn = txnByClass.get(classKey) || { discipline: 0, behavior: 0, attendance: 0, total: 0 };
+      return {
+        classKey,
+        deductedStudents,
+        deductedCount: deductedStudents.length,
+        communityServiceStudents,
+        communityServiceCount: communityServiceStudents.length,
+        txn
+      };
+    })
+    .sort((a, b) => a.classKey.localeCompare(b.classKey, undefined, { numeric: true }));
 }
 
 /**
@@ -239,4 +248,145 @@ export function summarizeBehaviorStats(reports) {
     topScore: Math.max(...scores),
     lowScore: Math.min(...scores)
   };
+}
+
+/**
+ * @param {Array<{ class?: string, points?: number, category?: string, type?: string }>} transactions
+ */
+export function summarizeTransactionsByClass(transactions) {
+  /** @type {Map<string, { discipline: number, behavior: number, attendance: number, total: number }>} */
+  const map = new Map();
+  for (const row of transactions) {
+    const key = String(row.class || '—').trim() || '—';
+    if (!map.has(key)) {
+      map.set(key, { discipline: 0, behavior: 0, attendance: 0, total: 0 });
+    }
+    const item = map.get(key);
+    const pts = Number(row.points) || 0;
+    item.total += pts;
+    const cat = row.category || row.type || '';
+    if (cat === 'discipline') item.discipline += pts;
+    else if (cat === 'behavior') item.behavior += pts;
+    else if (cat === 'attendance') item.attendance += pts;
+  }
+  return map;
+}
+
+/**
+ * @param {ReturnType<typeof buildStudentScoreReport>[]} reports
+ * @param {Map<string, { discipline: number, behavior: number, attendance: number, total: number }>} [txnByClass]
+ */
+export function summarizeScoreReportsByClass(reports, txnByClass = new Map()) {
+  /** @type {Map<string, ReturnType<typeof buildStudentScoreReport>[]>} */
+  const byClass = new Map();
+  for (const r of reports) {
+    const ck = r.classKey || '—';
+    if (!byClass.has(ck)) byClass.set(ck, []);
+    byClass.get(ck).push(r);
+  }
+
+  return [...byClass.entries()]
+    .map(([classKey, list]) => {
+      const stats = summarizeBehaviorStats(list);
+      const lowScores = filterLowScoreReports(list);
+      const atRisk = filterAttendanceRiskReports(list);
+      const txn = txnByClass.get(classKey) || { discipline: 0, behavior: 0, attendance: 0, total: 0 };
+      return {
+        classKey,
+        stats,
+        lowScores,
+        atRisk,
+        lowScoreStudents: sortReportsByScore(lowScores, true).slice(0, 5),
+        txn
+      };
+    })
+    .sort((a, b) => a.classKey.localeCompare(b.classKey, undefined, { numeric: true }));
+}
+
+/**
+ * Include classes that have point transactions but no attendance-based reports yet.
+ * @param {ReturnType<typeof summarizeScoreReportsByClass>} blocks
+ * @param {ReturnType<typeof summarizeTransactionsByClass>} txnByClass
+ */
+function mergeTransactionOnlyClasses(blocks, txnByClass, txnRows = []) {
+  const seen = new Set(blocks.map((b) => b.classKey));
+  const extras = [];
+  for (const [classKey, txn] of txnByClass) {
+    if (!classKey || classKey === '—' || seen.has(classKey)) continue;
+    const studentCount = new Set(
+      txnRows.filter((r) => r.class === classKey).map((r) => String(r.student_id || '').trim()).filter(Boolean)
+    ).size;
+    extras.push({
+      classKey,
+      stats: { ...summarizeBehaviorStats([]), count: studentCount },
+      lowScores: [],
+      atRisk: [],
+      lowScoreStudents: [],
+      txn
+    });
+  }
+  return [...blocks, ...extras].sort((a, b) =>
+    a.classKey.localeCompare(b.classKey, undefined, { numeric: true })
+  );
+}
+
+async function loadSemesterPointTransactions(session, range, attRows) {
+  let txnRows = [];
+  try {
+    txnRows = await queryPointsInRangeForSession(session, { from: range.from, to: range.to });
+  } catch (err) {
+    console.warn('[scores] points load failed', err);
+  }
+
+  const classKeysFromAtt = [
+    ...new Set(attRows.map((r) => String(r.class || '').trim()).filter(Boolean))
+  ];
+  if (!classKeysFromAtt.length) return txnRows;
+
+  const covered = new Set(txnRows.map((r) => r.class));
+  const missing = classKeysFromAtt.filter((k) => !covered.has(k));
+  if (!missing.length) return txnRows;
+
+  const extra = (
+    await Promise.all(
+      missing.map((k) => queryClassPointsInRange(k, range.from, range.to).catch(() => []))
+    )
+  ).flat();
+  return [...txnRows, ...extra];
+}
+
+/**
+ * Semester score reports scoped by role (homeroom / admin / pastoral).
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
+ * @param {string} [refDate] yyyy-MM-dd
+ */
+export async function loadSemesterScoreReportsForSession(session, refDate = getTodayDate()) {
+  if (!session) {
+    return {
+      reports: [],
+      transactions: [],
+      range: getSemesterDateRange(refDate),
+      byClass: [],
+      byClassDeducted: []
+    };
+  }
+
+  const range = getSemesterDateRange(refDate);
+  let attRows = [];
+  try {
+    attRows = await querySemesterAttendanceForSession(session, range);
+  } catch (err) {
+    console.warn('[scores] attendance load failed', err);
+  }
+
+  const txnRows = await loadSemesterPointTransactions(session, range, attRows);
+  const reports = buildClassScoreReports(attRows, txnRows);
+  const txnByClass = summarizeTransactionsByClass(txnRows);
+  const byClass = mergeTransactionOnlyClasses(
+    summarizeScoreReportsByClass(reports, txnByClass),
+    txnByClass,
+    txnRows
+  );
+  const byClassDeducted = summarizeDeductedReportsByClass(reports, txnByClass);
+  return { reports, transactions: txnRows, range, byClass, byClassDeducted };
 }

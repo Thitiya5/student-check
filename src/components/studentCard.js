@@ -1,18 +1,21 @@
 import { escapeHtml } from '../utils/html.js';
 import {
   ATTENDANCE_STATUS_KEYS,
-  CHECK_DEFAULT_STATUS
+  CHECK_DEFAULT_STATUS,
+  normalizeAttendanceStatus
 } from '../data/attendanceStatuses.js';
 import {
   getDisciplineChecks,
   getBehaviorKinds,
-  emptyDisciplineEntry
+  emptyDisciplineEntry,
+  normalizeDisciplineFlags
 } from '../data/disciplineChecks.js';
 import {
-  getBehaviorGoodPoints,
-  getBehaviorBadPoints,
-  canRecordDisciplineOnDate
+  canShowDisciplineOnCheck,
+  isDisciplineActiveDate,
+  isDisciplineScoringEnabled
 } from '../services/appSettingsService.js';
+import { formatDisciplineScore, resolveBehaviorEntryPoints } from '../data/disciplineChecks.js';
 import { statusLabel, t } from '../i18n/index.js';
 import { joinWithDot } from '../utils/separator.js';
 
@@ -38,12 +41,15 @@ function initials(student) {
   return '?';
 }
 
-function renderInspectionSection(studentId, entry, checkDate, canEdit) {
-  if (!canRecordDisciplineOnDate(checkDate)) return '';
+function renderInspectionSection(studentId, entry, checkDate, canEdit, attendanceStatus = CHECK_DEFAULT_STATUS) {
+  if (!canShowDisciplineOnCheck(checkDate)) return '';
 
-  const flags = [...(entry?.flags ?? [])];
+  const absent = normalizeAttendanceStatus(attendanceStatus) === 'absent';
+  const flags = absent
+    ? getDisciplineChecks().map((r) => r.id)
+    : normalizeDisciplineFlags(entry?.flags ?? []);
   const sid = escapeHtml(studentId);
-  const disabled = canEdit ? '' : 'disabled';
+  const disabled = !canEdit || absent ? 'disabled' : '';
 
   const chips = getDisciplineChecks()
     .map((rule) => {
@@ -53,44 +59,61 @@ function renderInspectionSection(studentId, entry, checkDate, canEdit) {
     })
     .join('');
 
+  const autoHtml = absent
+    ? `<p class="inspection-block__auto">${escapeHtml(t('inspection.autoFail'))}</p>`
+    : '';
+
   return `<section class="inspection-block" data-inspection-block="${sid}" aria-label="${escapeHtml(t('discipline.inspectionTitle'))}">
     <h4 class="card-section__title">${escapeHtml(t('discipline.inspectionTitle'))}</h4>
+    ${autoHtml}
     <div class="discipline-chips" role="group">${chips}</div>
   </section>`;
 }
 
-function renderBehaviorSection(studentId, entry, checkDate, canEdit) {
-  if (!canRecordDisciplineOnDate(checkDate)) return '';
+function renderBehaviorNoteRow(studentId, behavior, canEdit = true) {
+  const title =
+    behavior.kind === 'good' ? t('discipline.goodDeedShort') : t('discipline.badDeedShort');
+  const pts = formatDisciplineScore(resolveBehaviorEntryPoints(behavior));
+  const sid = escapeHtml(studentId);
+  const kind = escapeHtml(behavior.kind);
+  const returnBtn = canEdit
+    ? `<button type="button" class="behavior-block__return-btn" data-student-id="${sid}" data-return-kind="${kind}" aria-label="${escapeHtml(t('behavior.returnPoints'))}">${escapeHtml(t('behavior.returnPoints'))}</button>`
+    : '';
+  return `<div class="behavior-block__note" data-behavior-note="${kind}" data-student-id="${sid}">
+    <div class="behavior-block__note-main">
+      <span class="behavior-block__note-label">${escapeHtml(title)} (${escapeHtml(pts)})</span>
+      <span class="behavior-block__note-text">${escapeHtml(behavior.note)}</span>
+    </div>
+    ${returnBtn}
+  </div>`;
+}
+
+export function renderBehaviorSection(studentId, entry, checkDate, canEdit) {
+  if (!isDisciplineScoringEnabled() || !isDisciplineActiveDate(checkDate)) return '';
 
   const behaviors = entry?.behaviors ?? [];
   const sid = escapeHtml(studentId);
   const disabled = canEdit ? '' : 'disabled';
-  const goodPts = getBehaviorGoodPoints();
-  const badPts = Math.abs(getBehaviorBadPoints());
 
   const behaviorBtns = getBehaviorKinds()
     .map((b) => {
       const active = behaviors.some((x) => x.kind === b.id);
       const isGood = b.id === 'good';
       const icon = isGood ? '⭐' : '⚠️';
-      const ptsLabel = isGood ? `+${goodPts}` : `−${badPts}`;
       const cls = isGood
         ? 'discipline-behavior-btn discipline-behavior-btn--good'
         : 'discipline-behavior-btn discipline-behavior-btn--bad';
       const label = isGood ? t('discipline.goodDeedShort') : t('discipline.badDeedShort');
       return `<button type="button" class="${cls}${active ? ' is-active' : ''}" data-student-id="${sid}" data-behavior-kind="${escapeHtml(b.id)}" ${disabled}>
         <span class="discipline-behavior-btn__icon" aria-hidden="true">${icon}</span>
-        <span class="discipline-behavior-btn__text">${escapeHtml(label)} <span class="discipline-behavior-btn__pts">(${escapeHtml(ptsLabel)})</span></span>
+        <span class="discipline-behavior-btn__text">${escapeHtml(label)}</span>
       </button>`;
     })
     .join('');
 
   const behaviorNotes = behaviors
     .filter((b) => b.note)
-    .map((b) => {
-      const title = b.kind === 'good' ? t('discipline.goodDeedShort') : t('discipline.badDeedShort');
-      return `<p class="behavior-block__note" data-behavior-note="${escapeHtml(b.kind)}"><span class="behavior-block__note-label">${escapeHtml(title)}</span> ${escapeHtml(b.note)}</p>`;
-    })
+    .map((b) => renderBehaviorNoteRow(studentId, b, canEdit))
     .join('');
 
   return `<section class="behavior-block" data-behavior-block="${sid}" aria-label="${escapeHtml(t('discipline.behaviorTitle'))}">
@@ -100,14 +123,20 @@ function renderBehaviorSection(studentId, entry, checkDate, canEdit) {
   </section>`;
 }
 
+/**
+ * @param {{ showDiscipline?: boolean, showBehavior?: boolean }} [sections]
+ */
 export function renderStudentCardMarkup(
   student,
   currentStatus,
   disciplineEntry = emptyDisciplineEntry(),
   canEdit = true,
   statusKeys = ATTENDANCE_STATUS_KEYS,
-  checkDate = ''
+  checkDate = '',
+  sections = {}
 ) {
+  const showDiscipline = sections.showDiscipline !== false;
+  const showBehavior = sections.showBehavior === true;
   const sid = escapeHtml(student.student_id);
   const fname = escapeHtml(student.first_name);
   const lname = escapeHtml(student.last_name);
@@ -144,10 +173,44 @@ export function renderStudentCardMarkup(
           aria-label="status">${escapeHtml(statusLabel(currentStatus))}</span>
       </div>
       <div class="attendance-status-row" role="group" aria-label="${escapeHtml(t('check.statusGroup'))}">${buttons}</div>
-      ${renderInspectionSection(student.student_id, disciplineEntry, checkDate, canEdit)}
-      ${renderBehaviorSection(student.student_id, disciplineEntry, checkDate, canEdit)}
+      ${showDiscipline ? renderInspectionSection(student.student_id, disciplineEntry, checkDate, canEdit, currentStatus) : ''}
+      ${showBehavior ? renderBehaviorSection(student.student_id, disciplineEntry, checkDate, canEdit) : ''}
     </article>
   `;
+}
+
+export function renderBehaviorStudentCardMarkup(
+  student,
+  disciplineEntry = emptyDisciplineEntry(),
+  canEdit = true,
+  checkDate = ''
+) {
+  const sid = escapeHtml(student.student_id);
+  const fname = escapeHtml(student.first_name);
+  const lname = escapeHtml(student.last_name);
+  const idLine = student.number
+    ? joinWithDot(`รหัส ${student.student_id}`, `เลขที่ ${student.number}`)
+    : `รหัส ${sid}`;
+
+  const behaviors = disciplineEntry?.behaviors ?? [];
+  const netPts = behaviors.reduce((sum, b) => sum + resolveBehaviorEntryPoints(b), 0);
+  const scorePill =
+    behaviors.length && netPts !== 0
+      ? `<span class="behavior-student-card__score ${netPts < 0 ? 'behavior-student-card__score--neg' : 'behavior-student-card__score--pos'}">${escapeHtml(formatDisciplineScore(netPts))}</span>`
+      : behaviors.length
+        ? `<span class="behavior-student-card__score behavior-student-card__score--on">✓</span>`
+        : '';
+
+  return `<article class="behavior-student-card glass-card" data-student-id="${sid}">
+    <div class="behavior-student-card__head">
+      <div class="behavior-student-card__title-wrap">
+        <strong class="behavior-student-card__name">${fname} ${lname}</strong>
+        <span class="behavior-student-card__id">${escapeHtml(idLine)}</span>
+      </div>
+      ${scorePill}
+    </div>
+    ${renderBehaviorSection(student.student_id, disciplineEntry, checkDate, canEdit)}
+  </article>`;
 }
 
 export function renderStudentCardListMarkup(
@@ -156,14 +219,29 @@ export function renderStudentCardListMarkup(
   discipline = {},
   canEdit = true,
   statusKeys = ATTENDANCE_STATUS_KEYS,
-  checkDate = ''
+  checkDate = '',
+  sections = {}
 ) {
   return students
     .map((student) => {
       const id = student.student_id;
       const st = attendance[id] || CHECK_DEFAULT_STATUS;
       const disc = discipline[id] || emptyDisciplineEntry();
-      return renderStudentCardMarkup(student, st, disc, canEdit, statusKeys, checkDate);
+      return renderStudentCardMarkup(student, st, disc, canEdit, statusKeys, checkDate, sections);
+    })
+    .join('');
+}
+
+export function renderBehaviorStudentCardListMarkup(
+  students,
+  discipline = {},
+  canEdit = true,
+  checkDate = ''
+) {
+  return students
+    .map((student) => {
+      const disc = discipline[student.student_id] || emptyDisciplineEntry();
+      return renderBehaviorStudentCardMarkup(student, disc, canEdit, checkDate);
     })
     .join('');
 }
@@ -200,16 +278,39 @@ export function updateStudentCardUI(root, studentId, status, disciplineEntry, ch
 }
 
 export function updateStudentDisciplineUI(root, studentId, entry, checkDate = '') {
-  const card = root.querySelector(`.attendance-student-card[data-student-id="${CSS.escape(studentId)}"]`);
+  const sid = CSS.escape(studentId);
+  const card =
+    root.querySelector(`.attendance-student-card[data-student-id="${sid}"]`) ||
+    root.querySelector(`.behavior-student-card[data-student-id="${sid}"]`);
   if (!card) return;
   const status = card.dataset.attendanceStatus || CHECK_DEFAULT_STATUS;
+  const absent = normalizeAttendanceStatus(status) === 'absent';
+  const inspectionBlock = card.querySelector('.inspection-block');
 
-  const flags = [...(entry.flags ?? [])];
+  const flags = absent
+    ? getDisciplineChecks().map((r) => r.id)
+    : normalizeDisciplineFlags(entry.flags ?? []);
+
+  if (inspectionBlock) {
+    let autoLine = inspectionBlock.querySelector('.inspection-block__auto');
+    if (absent) {
+      if (!autoLine) {
+        autoLine = document.createElement('p');
+        autoLine.className = 'inspection-block__auto';
+        inspectionBlock.querySelector('.card-section__title')?.insertAdjacentElement('afterend', autoLine);
+      }
+      autoLine.textContent = t('inspection.autoFail');
+    } else {
+      autoLine?.remove();
+    }
+  }
+
   card.querySelectorAll('.discipline-chip[data-discipline-flag]').forEach((btn) => {
     if (!(btn instanceof HTMLElement)) return;
     const on = flags.includes(btn.dataset.disciplineFlag || '');
     btn.classList.toggle('discipline-chip--on', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (inspectionBlock) btn.disabled = absent;
   });
 
   card.querySelectorAll('[data-behavior-kind]').forEach((btn) => {
@@ -219,15 +320,36 @@ export function updateStudentDisciplineUI(root, studentId, entry, checkDate = ''
     btn.classList.toggle('is-active', active);
   });
 
+  const head = card.querySelector('.behavior-student-card__head');
+  if (head) {
+    const behaviorsAll = entry.behaviors || [];
+    const netPts = behaviorsAll.reduce((sum, b) => sum + resolveBehaviorEntryPoints(b), 0);
+    let pill = head.querySelector('.behavior-student-card__score');
+    if (!behaviorsAll.length) {
+      pill?.remove();
+    } else {
+      const cls =
+        netPts < 0
+          ? 'behavior-student-card__score--neg'
+          : netPts > 0
+            ? 'behavior-student-card__score--pos'
+            : 'behavior-student-card__score--on';
+      const text = netPts !== 0 ? formatDisciplineScore(netPts) : '✓';
+      if (!pill) {
+        pill = document.createElement('span');
+        pill.className = `behavior-student-card__score ${cls}`;
+        head.appendChild(pill);
+      }
+      pill.className = `behavior-student-card__score ${cls}`;
+      pill.textContent = text;
+    }
+  }
+
   const notesHost = card.querySelector('.behavior-block__notes');
   const behaviors = (entry.behaviors || []).filter((b) => b.note);
   if (notesHost) {
-    notesHost.innerHTML = behaviors
-      .map((b) => {
-        const title = b.kind === 'good' ? t('discipline.goodDeedShort') : t('discipline.badDeedShort');
-        return `<p class="behavior-block__note" data-behavior-note="${escapeHtml(b.kind)}"><span class="behavior-block__note-label">${escapeHtml(title)}</span> ${escapeHtml(b.note)}</p>`;
-      })
-      .join('');
+    const canEdit = !card.querySelector('[data-behavior-kind]:disabled');
+    notesHost.innerHTML = behaviors.map((b) => renderBehaviorNoteRow(studentId, b, canEdit)).join('');
   }
 }
 
@@ -243,7 +365,7 @@ export function bindAttendanceStatusPickers(container, onPick) {
   });
 }
 
-export function bindDisciplinePickers(container, onChange) {
+export function bindDisciplinePickers(container, onChange, { behavior = false } = {}) {
   container.addEventListener('click', (e) => {
     const flagBtn = e.target.closest('.discipline-chip[data-discipline-flag][data-student-id]');
     if (flagBtn instanceof HTMLButtonElement && !flagBtn.disabled) {
@@ -253,6 +375,8 @@ export function bindDisciplinePickers(container, onChange) {
       onChange(id, { type: 'toggle', flag });
       return;
     }
+
+    if (!behavior) return;
 
     const behaviorBtn = e.target.closest('[data-behavior-kind][data-student-id]');
     if (behaviorBtn instanceof HTMLButtonElement && !behaviorBtn.disabled) {

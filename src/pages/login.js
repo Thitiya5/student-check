@@ -1,16 +1,13 @@
 import { escapeHtml } from '../utils/html.js';
 import { t } from '../i18n/index.js';
 import { renderSchoolBrand } from '../components/schoolLogo.js';
-import { isPinLoginEnabled } from '../services/appConfig.js';
+import { checkTeacherRequiresPin } from '../services/teachersService.js';
 
 /**
  * @param {HTMLElement} container
  * @param {{ onLogin: (identifier: string, pin: string) => void | Promise<void>, initialName?: string }} ctx
  */
 export function renderLoginPage(container, { onLogin, initialName = '' }) {
-  const pinMode = isPinLoginEnabled();
-  const nameLabel = pinMode ? t('login.userLabel') : t('login.teacherLabel');
-
   container.innerHTML = `
     <article class="login-screen">
       <span class="login-screen__glow login-screen__glow--a" aria-hidden="true"></span>
@@ -24,7 +21,7 @@ export function renderLoginPage(container, { onLogin, initialName = '' }) {
         <h2 class="login-welcome">${escapeHtml(t('login.title'))}</h2>
         <form class="login-form" id="loginForm" novalidate>
           <label class="field login-field" for="loginTeacherName">
-            <span>${escapeHtml(nameLabel)}</span>
+            <span>${escapeHtml(t('login.teacherLabel'))}</span>
             <input
               id="loginTeacherName"
               class="input-field login-input"
@@ -35,23 +32,20 @@ export function renderLoginPage(container, { onLogin, initialName = '' }) {
               required
             />
           </label>
-          ${
-            pinMode
-              ? `<label class="field login-field login-pin-field" id="loginPinField" for="loginTeacherPin">
-            <span>${escapeHtml(t('login.pinLabel'))}</span>
+          <label class="field login-field login-pin-field" id="loginPinField" for="loginTeacherPin" hidden>
+            <span>${escapeHtml(t('login.adminPinLabel'))}</span>
             <input
               id="loginTeacherPin"
               class="input-field login-input"
               type="password"
-              name="teacherPin"
+              name="adminPin"
               inputmode="numeric"
               autocomplete="current-password"
               maxlength="12"
-              placeholder="${escapeHtml(t('login.pinPlaceholder'))}"
+              placeholder="${escapeHtml(t('login.adminPinPlaceholder'))}"
             />
-          </label>`
-              : ''
-          }
+            <p class="field-hint">${escapeHtml(t('login.adminPinHint'))}</p>
+          </label>
           <button type="submit" class="button-primary login-submit" id="loginSubmitBtn">
             <span class="login-submit__label">${escapeHtml(t('login.submit'))}</span>
           </button>
@@ -67,14 +61,43 @@ export function renderLoginPage(container, { onLogin, initialName = '' }) {
 
   const form = container.querySelector('#loginForm');
   const input = container.querySelector('#loginTeacherName');
+  const pinField = container.querySelector('#loginPinField');
   const pinInput = container.querySelector('#loginTeacherPin');
-
   const submitBtn = container.querySelector('#loginSubmitBtn');
   const statusEl = container.querySelector('#loginStatus');
   const submitLabel = submitBtn?.querySelector('.login-submit__label');
 
-  if (pinMode && pinInput instanceof HTMLInputElement) {
-    pinInput.required = true;
+  let pinRequired = false;
+  let pinCheckToken = 0;
+
+  function setPinFieldVisible(visible) {
+    pinRequired = visible;
+    if (pinField instanceof HTMLElement) {
+      pinField.hidden = !visible;
+    }
+    if (pinInput instanceof HTMLInputElement) {
+      pinInput.required = visible;
+      if (!visible) pinInput.value = '';
+    }
+  }
+
+  async function refreshPinRequirement() {
+    const name = input instanceof HTMLInputElement ? input.value.trim() : '';
+    const token = ++pinCheckToken;
+    if (name.length < 2) {
+      setPinFieldVisible(false);
+      return;
+    }
+    const result = await checkTeacherRequiresPin(name);
+    if (token !== pinCheckToken) return;
+    setPinFieldVisible(Boolean(result.requiresPin));
+    if (result.ambiguous && pinField instanceof HTMLElement) {
+      pinField.querySelector('.field-hint')?.replaceChildren();
+      const hint = document.createElement('p');
+      hint.className = 'field-hint';
+      hint.textContent = t('login.ambiguousName');
+      pinField.appendChild(hint);
+    }
   }
 
   function setLoading(loading) {
@@ -90,17 +113,24 @@ export function renderLoginPage(container, { onLogin, initialName = '' }) {
     }
   }
 
+  input?.addEventListener('input', () => {
+    void refreshPinRequirement();
+  });
+  input?.addEventListener('blur', () => {
+    void refreshPinRequirement();
+  });
+
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const identifier = input instanceof HTMLInputElement ? input.value.trim() : '';
-    const pin = pinMode && pinInput instanceof HTMLInputElement ? pinInput.value.trim() : '';
+    const pin = pinInput instanceof HTMLInputElement ? pinInput.value.trim() : '';
     if (!identifier) {
-      alert(pinMode ? t('login.userRequired') : t('login.nameRequired'));
+      alert(t('login.nameRequired'));
       input?.focus();
       return;
     }
-    if (pinMode && !pin) {
-      alert(t('login.pinRequired'));
+    if (pinRequired && !pin) {
+      alert(t('login.adminPinRequired'));
       pinInput?.focus();
       return;
     }
@@ -110,8 +140,7 @@ export function renderLoginPage(container, { onLogin, initialName = '' }) {
     } catch (err) {
       if (statusEl) {
         statusEl.hidden = false;
-        statusEl.textContent =
-          err instanceof Error ? err.message : t('login.failed');
+        statusEl.textContent = err instanceof Error ? err.message : t('login.failed');
       }
     } finally {
       setLoading(false);
@@ -120,5 +149,6 @@ export function renderLoginPage(container, { onLogin, initialName = '' }) {
 
   requestAnimationFrame(() => {
     input?.focus();
+    if (initialName) void refreshPinRequirement();
   });
 }

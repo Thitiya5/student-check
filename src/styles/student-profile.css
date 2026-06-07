@@ -19,27 +19,33 @@
   transform: scale(0.995);
 }
 
-.student-admin-card__title {
+.student-admin-card__name-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem;
-  flex: 1;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0;
   min-width: 0;
 }
 
 .student-admin-card__name {
   display: block;
-  margin: 0.35rem 0 0;
+  margin: 0;
   text-align: left;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.95rem;
+  line-height: 1.3;
 }
 
 .student-admin-card__risk {
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 0.15rem 0.45rem;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.28rem 0.55rem;
   border-radius: 999px;
   letter-spacing: 0.02em;
+  line-height: 1.15;
 }
 
 .student-admin-card__risk--watch {

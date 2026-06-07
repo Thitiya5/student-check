@@ -67,6 +67,25 @@ export function enumerateDateKeys(from, to) {
   return out;
 }
 
+/**
+ * Split [from, to] into chunks of at most maxDays (inclusive) for Firestore range limits.
+ * @param {string} from @param {string} to @param {number} [maxDays]
+ */
+export function chunkDateRange(from, to, maxDays = 35) {
+  if (!from || !to || from > to) return [];
+  const span = enumerateDateKeys(from, to).length;
+  if (span <= maxDays) return [{ from, to }];
+  const chunks = [];
+  let cur = from;
+  while (cur <= to) {
+    const end = addDaysToDateKey(cur, maxDays - 1);
+    const chunkTo = end > to ? to : end;
+    chunks.push({ from: cur, to: chunkTo });
+    cur = addDaysToDateKey(chunkTo, 1);
+  }
+  return chunks;
+}
+
 const ISO_DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** @param {unknown} value */

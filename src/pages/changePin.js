@@ -3,38 +3,24 @@ import { t } from '../i18n/index.js';
 import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeader.js';
 
 /**
+ * Admin-only — change own PIN.
  * @param {HTMLElement} container
- * @param {{ state?: object, onSubmit?: (payload: { currentPin: string, newPin: string, newUsername: string }) => Promise<void> | void, onNavigate?: (path: string) => void, onBack?: (fallback?: string) => void, onToast?: (msg: string) => void, onLogout?: () => void }} ctx
+ * @param {{ state?: object, onSubmit?: (payload: { currentPin: string, newPin: string }) => Promise<void> | void, onNavigate?: (path: string) => void, onBack?: (fallback?: string) => void, onToast?: (msg: string) => void, onLogout?: () => void }} ctx
  */
-export function renderChangePinPage(container, { state = {}, onSubmit, onNavigate, onBack, onToast, onLogout } = {}) {
-  const forceReset = Boolean(state?.teacherAuth?.mustChangePin);
+export function renderChangePinPage(container, { onSubmit, onNavigate, onBack, onToast, onLogout } = {}) {
   container.innerHTML = `
     ${renderPageHeader({
       title: t('changePin.title'),
-      subtitle: forceReset ? t('changePin.forceSubtitle') : '',
-      topAction: forceReset ? 'logout' : 'back'
+      subtitle: t('changePin.adminSubtitle'),
+      topAction: 'back'
     })}
     <section class="settings-group glass-card">
       <h2 class="settings-group__title">${escapeHtml(t('changePin.formTitle'))}</h2>
       <form id="changePinForm" class="settings-pin-form">
-        ${
-          forceReset
-            ? `<label class="field">
-          <span>${escapeHtml(t('changePin.newUsername'))}</span>
-          <input class="input-field" id="changePinUsername" type="text" autocomplete="username" minlength="3" maxlength="32" value="${escapeHtml(
-            String(state?.teacherAuth?.username || '')
-          )}" required />
-        </label>`
-            : ''
-        }
-        ${
-          forceReset
-            ? ''
-            : `<label class="field">
+        <label class="field">
           <span>${escapeHtml(t('changePin.currentPin'))}</span>
-          <input class="input-field" id="changePinCurrent" type="password" inputmode="numeric" maxlength="12" autocomplete="current-password" />
-        </label>`
-        }
+          <input class="input-field" id="changePinCurrent" type="password" inputmode="numeric" maxlength="12" autocomplete="current-password" required />
+        </label>
         <label class="field">
           <span>${escapeHtml(t('changePin.newPin'))}</span>
           <input class="input-field" id="changePinNew" type="password" inputmode="numeric" maxlength="12" autocomplete="new-password" required />
@@ -58,13 +44,8 @@ export function renderChangePinPage(container, { state = {}, onSubmit, onNavigat
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const currentPin = /** @type {HTMLInputElement|null} */ (container.querySelector('#changePinCurrent'))?.value?.trim() || '';
-    const newUsername = /** @type {HTMLInputElement|null} */ (container.querySelector('#changePinUsername'))?.value?.trim() || '';
     const newPin = /** @type {HTMLInputElement|null} */ (container.querySelector('#changePinNew'))?.value?.trim() || '';
     const confirmPin = /** @type {HTMLInputElement|null} */ (container.querySelector('#changePinConfirm'))?.value?.trim() || '';
-    if (forceReset && newUsername.length < 3) {
-      onToast?.(t('changePin.usernameTooShort'));
-      return;
-    }
 
     if (newPin.length < 6) {
       onToast?.(t('changePin.pinTooShort'));
@@ -74,12 +55,12 @@ export function renderChangePinPage(container, { state = {}, onSubmit, onNavigat
       onToast?.(t('changePin.notMatch'));
       return;
     }
-    if (!forceReset && !currentPin) {
+    if (!currentPin) {
       onToast?.(t('changePin.currentRequired'));
       return;
     }
     try {
-      await onSubmit?.({ currentPin, newPin, newUsername });
+      await onSubmit?.({ currentPin, newPin });
       onToast?.(t('changePin.changed'));
     } catch (err) {
       onToast?.(err instanceof Error ? err.message : t('changePin.failed'));

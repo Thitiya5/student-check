@@ -23,6 +23,8 @@ const RESERVED_LOGIN_TERMS = new Set([
 /** ROLE values that grant school-wide access (from TEACHERS sheet only) */
 const ADMIN_ROLE_VALUES = new Set(['admin', 'adnim', 'administrator']);
 
+export const PASTORAL_ROLE = 'pastoral';
+
 /** Thai honorifics often in TEACHER_NAME column */
 const THAI_HONORIFICS = ['นางสาว', 'นาง', 'นาย', 'ดร.', 'ผศ.', 'รศ.', 'ศ.', 'อ.', TEACHER_PREFIX];
 
@@ -38,6 +40,13 @@ export function isReservedLoginTerm(input) {
  */
 export function isAdminRoleFromSheet(role) {
   return ADMIN_ROLE_VALUES.has(String(role ?? '').trim().toLowerCase());
+}
+
+/**
+ * @param {string} role from TEACHERS sheet ROLE column
+ */
+export function isPastoralRoleFromSheet(role) {
+  return String(role ?? '').trim().toLowerCase() === PASTORAL_ROLE;
 }
 
 /**
@@ -148,6 +157,7 @@ export function teacherNameMatchScore(sheetName, input) {
  * @property {string} role
  * @property {string[]} assignedClasses normalized keys e.g. ["M2/1","M2/2"] or ["ALL"]
  * @property {boolean} isAdmin
+ * @property {boolean} [isPastoral]
  * @property {boolean} [mustChangePin]
  */
 
@@ -234,23 +244,100 @@ export function isAdminSession(session) {
 
 /**
  * @param {TeacherAuthSession|null|undefined} session
+ */
+export function isPastoralSession(session) {
+  if (!session) return false;
+  if (session.isPastoral) return true;
+  return isPastoralRoleFromSheet(session.role);
+}
+
+/** Admin or pastoral — school-wide student/reports view. */
+export function isSchoolWideViewSession(session) {
+  return isAdminSession(session) || isPastoralSession(session);
+}
+
+/** Homeroom (own class) or admin/pastoral — read-only points ledger. */
+export function canViewPointsReportSession(session) {
+  if (!session) return false;
+  if (isSchoolWideViewSession(session)) return true;
+  return getHomeroomClassKeys(session).length > 0;
+}
+
+/** Admin/pastoral — edit shortcuts from points report. */
+export function canEditPointsReportSession(session) {
+  return isSchoolWideViewSession(session);
+}
+
+/** Admin or pastoral — return discipline point deductions (with PIN). */
+export function canReturnDisciplinePointsSession(session) {
+  return canEditPointsReportSession(session);
+}
+
+/**
+ * @param {TeacherAuthSession|null|undefined} session
+ */
+export function canManageBehaviorSession(session) {
+  return isAdminSession(session) || isPastoralSession(session);
+}
+
+/**
+ * Attendance check — assigned homeroom classes (admin: all).
+ * @param {TeacherAuthSession|null|undefined} session
  * @param {string} classKey
  */
 export function canAccessClass(session, classKey) {
   if (!session) return false;
-  if (isAdminSession(session)) return true;
+  if (isAdminSession(session) || isPastoralSession(session)) return true;
   const key = toCanonicalClassKey(classKey);
   if (!key) return false;
   return (session.assignedClasses || []).some((c) => classKeysMatch(c, key));
 }
 
 /**
+ * View students / reports for a class (pastoral + admin: all rooms).
+ * @param {TeacherAuthSession|null|undefined} session
+ * @param {string} level
+ * @param {string} room
+ */
+export function canViewLevelRoom(session, level, room) {
+  if (!session) return false;
+  if (isSchoolWideViewSession(session)) return true;
+  return canAccessLevelRoom(session, level, room);
+}
+
+/**
+ * @param {TeacherAuthSession|null|undefined} session
+ * @param {string} classKey
+ */
+export function canManageBehaviorForClass(session, classKey) {
+  if (!canManageBehaviorSession(session)) return false;
+  if (isAdminSession(session) || isPastoralSession(session)) return true;
+  return canAccessClass(session, classKey);
+}
+
+/**
  * @param {TeacherAuthSession|null|undefined} session
  * @returns {string[]|null} null = unrestricted (admin)
  */
-export function getAllowedClassKeys(session) {
+export function getAttendanceClassKeys(session) {
   if (!session) return [];
   if (isAdminSession(session)) return null;
+  return getHomeroomClassKeys(session);
+}
+
+/** @deprecated Use getAttendanceClassKeys — kept for gradual migration */
+export function getAllowedClassKeys(session) {
+  return getAttendanceClassKeys(session);
+}
+
+/**
+ * Students list / profile picker scope.
+ * @param {TeacherAuthSession|null|undefined} session
+ * @returns {string[]|null} null = all classes
+ */
+export function getViewClassKeys(session) {
+  if (!session) return [];
+  if (isSchoolWideViewSession(session)) return null;
   return getHomeroomClassKeys(session);
 }
 
@@ -269,8 +356,8 @@ export function getHomeroomClassKeys(session) {
  * @param {TeacherAuthSession|null|undefined} session
  */
 export function filterRowsByAssignedClasses(rows, session) {
-  if (!session || isAdminSession(session)) return rows;
-  const allowed = new Set(getAllowedClassKeys(session));
+  if (!session || isSchoolWideViewSession(session)) return rows;
+  const allowed = new Set(getAttendanceClassKeys(session));
   if (!allowed.size) return [];
   return rows.filter((r) => [...allowed].some((k) => classKeysMatch(k, r.class)));
 }
@@ -324,7 +411,9 @@ export function loadTeacherAuthSession() {
       ? data.assignedClasses.map(normalizeClassKey)
       : parseAssignedClasses(data.assignedClasses);
     const hasAll = assignedClasses.includes('ALL');
-    const isAdmin = Boolean(data.isAdmin) || isAdminSession({ ...data, assignedClasses });
+    const role = String(data.role ?? 'teacher').trim();
+    const isPastoral = Boolean(data.isPastoral) || isPastoralRoleFromSheet(role);
+    const isAdmin = Boolean(data.isAdmin) || isAdminSession({ ...data, assignedClasses, role });
     const classesForSession = hasAll
       ? ['ALL']
       : assignedClasses.length
@@ -336,9 +425,10 @@ export function loadTeacherAuthSession() {
       teacherName: String(data.teacherName ?? '').trim(),
       username: String(data.username ?? '').trim(),
       userId: String(data.userId ?? '').trim(),
-      role: String(data.role ?? 'teacher').trim(),
+      role,
       assignedClasses: classesForSession,
       isAdmin,
+      isPastoral,
       mustChangePin: Boolean(data.mustChangePin)
     };
   } catch {

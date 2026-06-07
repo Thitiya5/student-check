@@ -17,20 +17,25 @@ body {
 body {
   font-family: var(--font-sans);
   font-size: clamp(16px, 0.35vw + 15px, 17px);
-  line-height: 1.45;
+  line-height: 1.5;
   background:
-    radial-gradient(1200px circle at 20% -10%, rgba(168, 85, 255, 0.35), transparent 45%),
-    radial-gradient(900px circle at 100% 0%, rgba(76, 64, 255, 0.28), transparent 40%),
+    radial-gradient(900px circle at 15% -5%, var(--bg-glow-a), transparent 50%),
+    radial-gradient(700px circle at 100% 5%, var(--bg-glow-b), transparent 45%),
     linear-gradient(180deg, var(--bg-page) 0%, var(--bg-gradient-mid) 55%, var(--bg-page-end) 100%);
   background-attachment: fixed;
   color: var(--text);
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
 select {
   font: inherit;
   color: inherit;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 #app {

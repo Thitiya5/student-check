@@ -15,4 +15,6 @@
 @import './dark-theme.css';
 @import './pwa.css';
 @import './ui-safe.css';
+@import './mobile.css';
+@import './discipline-report.css';
 @import './typography.css';

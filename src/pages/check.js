@@ -13,18 +13,33 @@ import {
   normalizeAttendanceStatus,
   CHECK_DEFAULT_STATUS
 } from '../data/attendanceStatuses.js';
-import { emptyDisciplineEntry } from '../data/disciplineChecks.js';
+import {
+  emptyDisciplineEntry,
+  formatDisciplineScore,
+  summarizeDisciplineChanges,
+  resolveDisciplineFlagsForScoring,
+  getDisciplineChecks,
+  normalizeDisciplineFlags,
+  disciplineEntryToFirestore
+} from '../data/disciplineChecks.js';
+import { showSaveResultBadge, dismissSaveResultBadge } from '../components/saveResultBadge.js';
 import { t, statusLabel } from '../i18n/index.js';
 import { isGasConfigured } from '../services/googleAppsScript.js';
 import {
   buildAttendanceClassKey,
   getAttendanceForClassOnDate,
   recordsToAttendanceMap,
-  recordsToDisciplineMap
+  recordsToDisciplineMap,
+  saveClassAttendance
 } from '../services/attendanceService.js';
 import { cacheClassSession, getCachedClassSession } from '../services/offlineDb.js';
 import { isOnline } from '../services/offlineSync.js';
-import { fetchLevelOptions, fetchRoomOptions, fetchStudentsByClass } from '../services/studentsService.js';
+import {
+  fetchLevelOptions,
+  fetchRoomOptions,
+  fetchStudentsByClass,
+  studentFullName
+} from '../services/studentsService.js';
 import {
   loadTeacherAuthSession,
   isAdminSession,
@@ -34,11 +49,15 @@ import {
   canAccessLevelRoom,
 } from '../services/teacherAuth.js';
 import { getTodayDate } from '../utils/dateIso.js';
-import { isInspectionDayCached } from '../services/inspectionScheduleService.js';
-import { canRecordDisciplineOnDate } from '../services/appSettingsService.js';
+import { initAppSettings } from '../services/appSettingsService.js';
 import { formatDateWithDayThai } from '../components/datePicker.js';
 import { renderPageHeader, renderNavQuickLinks, bindPageHeaderActions } from '../components/pageHeader.js';
-import { openBehaviorNoteModal } from '../components/behaviorNoteModal.js';
+import { withBehaviorQuickLink } from '../utils/quickNavLinks.js';
+import { getHashQuery } from '../services/navigation.js';
+import {
+  enrichStudentsForPointSync,
+  syncClassPointTransactions
+} from '../services/studentPointsService.js';
 
 function countStatuses(students, attendance) {
   const out = Object.fromEntries(ATTENDANCE_STATUS_KEYS.map((k) => [k, 0]));
@@ -58,7 +77,7 @@ function buildFullMap(students, attendance) {
 }
 
 export function renderCheckPage(container, ctx = {}) {
-  const { state = {}, submitAttendance, onNavigate, onBack, onToast, persistClassSelection } = ctx;
+  const { state = {}, submitAttendance, onNavigate, onBack, onToast, persistClassSelection, persistCheckDate } = ctx;
 
   const session = state.teacherAuth || loadTeacherAuthSession();
   const teacherName = String(session?.teacherName || state.teacherName || '').trim();
@@ -73,20 +92,29 @@ export function renderCheckPage(container, ctx = {}) {
         : '';
   const multiClass = !admin && allowedKeys && allowedKeys.length > 1;
 
-  const dateKey = getTodayDate();
-  let level = state.currentLevel || '';
-  let room = state.currentRoom || '';
-  let classReady = Boolean(state.classConfirmed && level && room);
+  const deepLink = getHashQuery();
+  const deepDate = deepLink.get('date');
+  const deepLevel = deepLink.get('level');
+  const deepRoom = deepLink.get('room');
+  const hasDeepClass = Boolean(deepLevel && deepRoom);
+  let dateKey = deepDate || state.currentDate || getTodayDate();
+  let level = deepLevel || state.currentLevel || '';
+  let room = deepRoom || state.currentRoom || '';
+  let classReady = hasDeepClass || Boolean(state.classConfirmed && level && room);
   let students = [];
   let attendance = {};
-  /** @type {Record<string, { flags: string[], adjust: number }>} */
+  /** @type {Record<string, { flags: string[], behaviors: Array<{ kind: string }>, note: string }>} */
   let discipline = {};
+  /** @type {typeof discipline} */
+  let baselineDiscipline = {};
 
-  if (singleClass) {
+  if (singleClass && !hasDeepClass) {
     const parts = classKeyToParts(singleClass);
     level = parts.level;
     room = parts.room;
   }
+
+  const hideClassPicker = Boolean(singleClass && !hasDeepClass) || hasDeepClass;
 
   const pickerAdminHtml = `<div class="class-picker-grid">
         <label class="field"><span>${escapeHtml(t('common.level'))}</span><select id="levelSelect" class="select-field"><option value="">${escapeHtml(t('common.select'))}</option></select></label>
@@ -109,22 +137,30 @@ export function renderCheckPage(container, ctx = {}) {
       subtitle: `${teacherName} · ${formatDateWithDayThai(dateKey)}`,
       topAction: 'back'
     })}
-    ${renderNavQuickLinks([
-      { label: t('nav.home'), path: '/dashboard' },
-      { label: t('dashboard.quick.students'), path: '/students' },
-      { label: t('dashboard.quick.history'), path: '/history' }
-    ])}
-    <section class="attendance-sheet class-picker-sheet glass-card" id="classPickerSheet" ${singleClass ? 'hidden' : ''}>
+    ${renderNavQuickLinks(
+      withBehaviorQuickLink(session, [
+        { label: t('nav.home'), path: '/dashboard' },
+        { label: t('dashboard.quick.students'), path: '/students' },
+        { label: t('dashboard.quick.history'), path: '/history' }
+      ])
+    )}
+    <label class="field check-date-field glass-card">
+      <span>${escapeHtml(t('common.date'))}</span>
+      <input type="date" id="checkDate" class="input-field" value="${escapeHtml(dateKey)}" />
+    </label>
+    <section class="attendance-sheet class-picker-sheet glass-card" id="classPickerSheet" ${hideClassPicker ? 'hidden' : ''}>
       <h2>${escapeHtml(t('check.pickClass'))}</h2>
       ${admin ? pickerAdminHtml : multiClass ? pickerMultiHtml : pickerSingleHtml}
-      <button type="button" class="button-primary class-picker-go" id="startCheckBtn" ${singleClass ? 'hidden' : ''} disabled>${escapeHtml(t('check.start'))}</button>
+      <button type="button" class="button-primary class-picker-go" id="startCheckBtn" ${hideClassPicker ? 'hidden' : ''} disabled>${escapeHtml(t('check.start'))}</button>
     </section>
-    <section id="checkBody">${renderEmpty(singleClass ? t('check.loadingStudents') : t('check.pickClass'))}</section>
+    <section id="checkBody">${renderEmpty(hideClassPicker ? t('check.loadingStudents') : t('check.pickClass'))}</section>
     <footer class="attendance-footer-slot" id="checkFooter" hidden>
       <button type="button" class="attendance-save-btn button-primary" id="saveAttendance">${escapeHtml(t('common.save'))}</button>
     </footer>
   </div>`;
 
+  const headerSubtitle = container.querySelector('.dash-header__date');
+  const dateInput = container.querySelector('#checkDate');
   const body = container.querySelector('#checkBody');
   const footer = container.querySelector('#checkFooter');
   const pickerSheet = container.querySelector('#classPickerSheet');
@@ -132,6 +168,12 @@ export function renderCheckPage(container, ctx = {}) {
   const roomSel = container.querySelector('#roomSelect');
   const assignedSel = container.querySelector('#assignedClassSelect');
   const startBtn = container.querySelector('#startCheckBtn');
+
+  function updateHeaderDate() {
+    if (headerSubtitle) {
+      headerSubtitle.textContent = `${teacherName} · ${formatDateWithDayThai(dateKey)}`;
+    }
+  }
 
   function assertClassAccess() {
     if (!canAccessLevelRoom(session, level, room)) {
@@ -191,6 +233,26 @@ export function renderCheckPage(container, ctx = {}) {
     if (startBtn) startBtn.disabled = !(level && room);
   }
 
+  function cloneDisciplineMap(source = {}) {
+    /** @type {typeof discipline} */
+    const out = {};
+    for (const [sid, entry] of Object.entries(source)) {
+      out[sid] = {
+        flags: [...(entry?.flags || [])],
+        behaviors: (entry?.behaviors || []).map((b) => ({ ...b })),
+        note: String(entry?.note || '')
+      };
+    }
+    return out;
+  }
+
+  function summarizePendingDiscipline() {
+    return summarizeDisciplineChanges(students, discipline, baselineDiscipline, studentFullName, {
+      trackFlags: true,
+      trackBehaviors: false
+    });
+  }
+
   function refreshSummary() {
     const row = body?.querySelector('.attendance-summary-row');
     if (!row) return;
@@ -204,13 +266,7 @@ export function renderCheckPage(container, ctx = {}) {
   function renderStudentsUI() {
     if (!body) return;
     const summary = countStatuses(students, attendance);
-    const inspectionBanner =
-      isInspectionDayCached(dateKey) && canRecordDisciplineOnDate(dateKey)
-        ? `<p class="check-inspection-banner" role="status">${escapeHtml(t('check.inspectionDayBanner'))}</p>`
-        : '';
-
     body.innerHTML = `<p class="attendance-teacher-line"><strong>${escapeHtml(level)}/${escapeHtml(room)}</strong> ${MIDDOT} ${students.length} ${escapeHtml(t('check.studentsCount'))}</p>
-      ${inspectionBanner}
       <div class="attendance-summary-row">
         ${ATTENDANCE_STATUS_KEYS.map((k) => `<div class="attendance-mini"><div class="k">${escapeHtml(statusLabel(k))}</div><div class="v">${summary[k] ?? 0}</div></div>`).join('')}
       </div>
@@ -221,7 +277,7 @@ export function renderCheckPage(container, ctx = {}) {
           ${admin || multiClass ? `<button type="button" class="attendance-chip-btn" id="changeClassBtn">${escapeHtml(t('check.changeClass'))}</button>` : ''}
         </div>
       </div>
-      <div class="attendance-students-scroll attendance-students-list" id="studentList">${renderStudentCardListMarkup(students, attendance, discipline, true, ATTENDANCE_STATUS_KEYS, dateKey)}</div>`;
+      <div class="attendance-students-scroll attendance-students-list" id="studentList">${renderStudentCardListMarkup(students, attendance, discipline, true, ATTENDANCE_STATUS_KEYS, dateKey, { showBehavior: false })}</div>`;
 
 
     footer.hidden = false;
@@ -236,8 +292,21 @@ export function renderCheckPage(container, ctx = {}) {
       const key = normalizeAttendanceStatus(status);
       if (!ATTENDANCE_STATUS_KEYS.includes(key)) return;
       attendance[studentId] = key;
-      const disc = discipline[studentId] || emptyDisciplineEntry();
-      updateStudentCardUI(scrollEl, studentId, key, disc, dateKey);
+      if (!discipline[studentId]) discipline[studentId] = emptyDisciplineEntry();
+      const entry = {
+        ...discipline[studentId],
+        behaviors: [...(discipline[studentId].behaviors || [])],
+        flags: [...(discipline[studentId].flags || [])]
+      };
+      if (key === 'absent') {
+        entry.disciplineWaived = false;
+        entry.flags = resolveDisciplineFlagsForScoring('absent', dateKey, entry.flags);
+      } else {
+        entry.flags = [];
+        entry.disciplineWaived = false;
+      }
+      discipline[studentId] = entry;
+      updateStudentCardUI(scrollEl, studentId, key, entry, dateKey);
       refreshSummary();
     });
 
@@ -250,28 +319,9 @@ export function renderCheckPage(container, ctx = {}) {
         if (set.has(action.flag)) set.delete(action.flag);
         else set.add(action.flag);
         entry.flags = [...set];
+        entry.disciplineWaived = false;
         discipline[studentId] = entry;
         updateStudentDisciplineUI(scrollEl, studentId, entry, dateKey);
-        return;
-      }
-
-      if (action.type === 'behavior' && action.kind) {
-        const kind = action.kind;
-        const existing = entry.behaviors.find((b) => b.kind === kind);
-        if (existing) {
-          entry.behaviors = entry.behaviors.filter((b) => b.kind !== kind);
-          discipline[studentId] = entry;
-          updateStudentDisciplineUI(scrollEl, studentId, entry, dateKey);
-          return;
-        }
-        openBehaviorNoteModal({
-          title: kind === 'good' ? t('discipline.goodDeed') : t('discipline.badDeed'),
-          onConfirm: (note) => {
-            entry.behaviors = [...entry.behaviors.filter((b) => b.kind !== kind), { kind, note }];
-            discipline[studentId] = entry;
-            updateStudentDisciplineUI(scrollEl, studentId, entry, dateKey);
-          }
-        });
       }
     });
 
@@ -311,9 +361,45 @@ export function renderCheckPage(container, ctx = {}) {
     });
   }
 
+  async function resyncPointsForLoadedClass() {
+    if (!isOnline() || !students.length || !level || !room || !teacherName) return 0;
+    const classKey = buildAttendanceClassKey(level, room);
+    const studentsPayload = enrichStudentsForPointSync(
+      students.map((s) => {
+        const sid = String(s.student_id);
+        const disc = discipline[sid] || emptyDisciplineEntry();
+        const status = normalizeAttendanceStatus(attendance[sid] || CHECK_DEFAULT_STATUS);
+        return {
+          student_id: sid,
+          student_name: studentFullName(s),
+          status,
+          ...disciplineEntryToFirestore(disc)
+        };
+      }),
+      dateKey
+    );
+    await syncClassPointTransactions({
+      classKey,
+      date: dateKey,
+      teacherName,
+      students: studentsPayload
+    });
+    await saveClassAttendance({
+      classKey,
+      teacherName,
+      attendanceDate: dateKey,
+      students: studentsPayload
+    });
+    return studentsPayload.filter(
+      (s) => normalizeAttendanceStatus(s.status) === 'absent'
+    ).length;
+  }
+
   async function openClass() {
     if (!level || !room) return;
     if (!assertClassAccess()) return;
+
+    await initAppSettings();
 
     classReady = true;
     persistClassSelection?.(level, room, { classConfirmed: true });
@@ -338,12 +424,40 @@ export function renderCheckPage(container, ctx = {}) {
       }
 
       students.forEach((s) => {
-        const sid = s.student_id;
+        const sid = String(s.student_id);
         if (!attendance[sid]) attendance[sid] = CHECK_DEFAULT_STATUS;
         if (!discipline[sid]) discipline[sid] = emptyDisciplineEntry();
+        if (normalizeAttendanceStatus(attendance[sid]) === 'absent') {
+          if (!discipline[sid].disciplineWaived) {
+            discipline[sid] = {
+              ...discipline[sid],
+              flags: resolveDisciplineFlagsForScoring('absent', dateKey, discipline[sid].flags)
+            };
+          }
+        } else {
+          const rules = getDisciplineChecks();
+          let flags = normalizeDisciplineFlags(discipline[sid].flags);
+          if (rules.length && flags.length === rules.length) {
+            flags = [];
+          }
+          discipline[sid] = { ...discipline[sid], flags };
+        }
       });
 
+      baselineDiscipline = cloneDisciplineMap(discipline);
+      dismissSaveResultBadge();
       await cacheClassSession(classKey, dateKey, { attendance, discipline, students });
+      if (isOnline()) {
+        try {
+          const absentCount = await resyncPointsForLoadedClass();
+          if (absentCount > 0) {
+            onToast?.(t('check.pointsResynced', { count: absentCount }));
+          }
+        } catch (err) {
+          console.error('[check] point resync failed', err);
+          onToast?.(t('check.pointSyncFailed'));
+        }
+      }
       renderStudentsUI();
     } catch (err) {
       console.error('[check] openClass failed', err);
@@ -357,6 +471,21 @@ export function renderCheckPage(container, ctx = {}) {
   bindPageHeaderActions(container, {
     onBack: () => onBack?.('/dashboard'),
     onNavigate
+  });
+
+  dateInput?.addEventListener('change', () => {
+    dateKey = dateInput.value || getTodayDate();
+    persistCheckDate?.(dateKey);
+    updateHeaderDate();
+    classReady = false;
+    footer.hidden = true;
+    if (pickerSheet && !hideClassPicker) pickerSheet.hidden = false;
+    body.innerHTML = renderEmpty(
+      level && room ? t('check.dateChangedHint') : hideClassPicker ? t('check.loadingStudents') : t('check.pickClass')
+    );
+    if (hideClassPicker && level && room) {
+      void openClass();
+    }
   });
 
   levelSel?.addEventListener('change', async () => {
@@ -400,7 +529,9 @@ export function renderCheckPage(container, ctx = {}) {
     const saveBtn = container.querySelector('#saveAttendance');
     saveBtn.disabled = true;
     try {
-      await submitAttendance(full, {
+      const classKey = buildAttendanceClassKey(level, room);
+      const summary = summarizePendingDiscipline();
+      const ok = await submitAttendance(full, {
         teacherName,
         classStudents: students,
         discipline,
@@ -409,16 +540,35 @@ export function renderCheckPage(container, ctx = {}) {
         room,
         navigateAfterSave: true
       });
+      if (ok) {
+        showSaveResultBadge({
+          classKey,
+          dateLabel: formatDateWithDayThai(dateKey),
+          totalDelta: summary.totalDelta,
+          items: summary.items
+        });
+      }
     } finally {
       saveBtn.disabled = false;
     }
   });
 
-  void loadLevels()
-    .then(() => {
+  void initAppSettings()
+    .then(() => loadLevels())
+    .then(async () => {
+      if (deepDate && dateInput instanceof HTMLInputElement) dateInput.value = deepDate;
+      if (deepLevel && levelSel) levelSel.value = deepLevel;
+      if (deepLevel) await loadRooms(deepLevel);
+      if (deepRoom && roomSel) roomSel.value = deepRoom;
+      if (deepDate) persistCheckDate?.(deepDate);
+      if (deepLevel && deepRoom) {
+        classReady = true;
+        if (pickerSheet) pickerSheet.hidden = true;
+        await openClass();
+        return;
+      }
       if (singleClass && level && room) {
-        if (classReady) void openClass();
-        else void openClass();
+        void openClass();
       } else if (classReady && level && room && assertClassAccess()) {
         void openClass();
       }

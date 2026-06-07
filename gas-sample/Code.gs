@@ -200,6 +200,10 @@ function routeAction_(action, params) {
         String(params.login || params.username || params.teacherName || params.name || ''),
         String(params.pin || params.teacherPin || '')
       );
+    case 'verifyAdminLoginByName':
+      return verifyAdminLoginByName_(params);
+    case 'verifyPastoralPinByName':
+      return verifyPastoralPinByName_(params);
     case 'teacherRequiresPin':
       return teacherRequiresPin_(String(params.teacherName || params.name || ''));
     case 'changeTeacherCredentials':
@@ -211,12 +215,19 @@ function routeAction_(action, params) {
         String(params.forceReset || '').toLowerCase() === 'true'
       );
     case 'adminResetTeacherPin':
-      return adminResetTeacherPin_(
-        String(params.adminUsername || ''),
-        String(params.adminPin || ''),
-        String(params.targetUsername || params.username || ''),
-        String(params.newPin || params.tempPin || '')
-      );
+      return adminResetTeacherPin_(params);
+    case 'adminCreateTeacher':
+      return adminCreateTeacher_(params);
+    case 'adminUpdateTeacher':
+      return adminUpdateTeacher_(params);
+    case 'adminDeactivateTeacher':
+      return adminDeactivateTeacher_(params);
+    case 'adminCreateStudent':
+      return adminCreateStudent_(params);
+    case 'adminUpdateStudent':
+      return adminUpdateStudent_(params);
+    case 'adminDeleteStudent':
+      return adminDeleteStudent_(params);
     case 'getAttendance': {
       const date = String(params.date || '');
       const type = String(params.type || params.level || '');
@@ -255,10 +266,17 @@ function listActions_() {
     'getStudents',
     'getClassOptions',
     'getTeachers',
-    'verifyTeacherLogin',
+    'verifyAdminLoginByName',
+    'verifyPastoralPinByName',
     'teacherRequiresPin',
     'changeTeacherCredentials',
     'adminResetTeacherPin',
+    'adminCreateTeacher',
+    'adminUpdateTeacher',
+    'adminDeactivateTeacher',
+    'adminCreateStudent',
+    'adminUpdateStudent',
+    'adminDeleteStudent',
     'getAttendance',
     'saveAttendance'
   ];
@@ -305,14 +323,17 @@ function teacherIsAdmin_(match) {
   );
 }
 
-/** True when login UI must collect PIN (sheet PIN or admin account). */
+function teacherIsPastoral_(match) {
+  return String(match.role || match.ROLE || '').toLowerCase() === 'pastoral';
+}
+
+/** True when login UI must collect PIN — admin accounts only. */
 function teacherLoginRequiresPin_(match) {
-  if (String(match.TEACHER_PIN || '').trim()) return true;
   return teacherIsAdmin_(match);
 }
 
 /**
- * Whether a matched teacher needs PIN on login (does not expose PIN value).
+ * Whether login should show PIN field (admin only; does not expose PIN value).
  * @param {string} nameInput
  */
 function teacherRequiresPin_(nameInput) {
@@ -326,9 +347,62 @@ function teacherRequiresPin_(nameInput) {
   }
   return ok_({
     found: true,
-    requiresPin: teacherLoginRequiresPin_(matches[0]),
+    requiresPin: teacherIsAdmin_(matches[0]),
     ambiguous: false
   });
+}
+
+/**
+ * Admin login by TEACHER_NAME + PIN (teachers use name-only login in the app).
+ * @param {Object} params
+ */
+function verifyAdminLoginByName_(params) {
+  params = params || {};
+  var teacherName = String(params.teacherName || params.adminTeacherName || params.name || '').trim();
+  var pin = String(params.pin || params.adminPin || '').trim();
+  if (!teacherName) return fail_('กรุณาระบุชื่อครู');
+  if (!pin) return fail_('กรุณาระบุ PIN ผู้ดูแลระบบ');
+
+  var auth = verifyAdminWrite_({
+    adminTeacherName: teacherName,
+    adminPin: pin
+  });
+  if (!auth.ok) return fail_(auth.error);
+
+  return ok_({ teacher: publicTeacherRow_(auth.admin) });
+}
+
+/**
+ * Pastoral teacher PIN — for behavior score writes (name + PIN).
+ * @param {Object} params
+ */
+function verifyPastoralPinByName_(params) {
+  params = params || {};
+  var teacherName = String(params.teacherName || params.name || '').trim();
+  var pin = String(params.pin || '').trim();
+  if (!teacherName) return fail_('กรุณาระบุชื่อครู');
+  if (!pin) return fail_('กรุณาระบุ PIN');
+
+  var teachers = readTeachers_();
+  var matches = findTeachersByLoginName_(teachers, teacherName);
+  if (!matches.length) return fail_('ไม่พบชื่อครู');
+  if (matches.length > 1) return fail_('พบชื่อใกล้เคียงหลายคน — พิมพ์ชื่อเต็มให้ชัดขึ้น');
+
+  var match = matches[0];
+  if (!teacherIsPastoral_(match)) return fail_('บัญชีนี้ไม่ใช่ครูปกครอง (pastoral)');
+  if (match.ACTIVE === false) return fail_('บัญชีถูกปิดการใช้งาน');
+
+  var pinRequired = String(match.TEACHER_PIN || '').trim();
+  var pinHash = String(match.PIN_HASH || '').trim();
+  if (pinHash) {
+    if (!verifyPin_(pin, pinHash)) return fail_('PIN ไม่ถูกต้อง');
+  } else if (pinRequired) {
+    if (pin !== pinRequired) return fail_('PIN ไม่ถูกต้อง');
+  } else {
+    return fail_('บัญชีครูปกครองต้องตั้งรหัส PIN ในแท็บ TEACHERS');
+  }
+
+  return ok_({ teacher: publicTeacherRow_(match) });
 }
 
 function verifyTeacherLogin_(nameInput, pinInput) {
@@ -440,12 +514,14 @@ function changeTeacherCredentials_(usernameInput, currentPin, newPin, newUsernam
  * Admin resets a teacher PIN — requires admin username + PIN verification.
  * Sets PIN_HASH, MUST_CHANGE_PIN=true, clears TEACHER_PIN.
  */
-function adminResetTeacherPin_(adminUsername, adminPin, targetUsername, newPin) {
-  var auth = verifyAdminPin_(adminUsername, adminPin);
+function adminResetTeacherPin_(params) {
+  params = params || {};
+  var auth = verifyAdminWrite_(params);
   if (!auth.ok) return fail_(auth.error);
 
-  var targetLogin = String(targetUsername || '').trim().toLowerCase();
-  if (!targetLogin) return fail_('กรุณาระบุ username ครูที่ต้องการรีเซ็ต');
+  var targetUsername = String(params.targetUsername || params.username || '').trim().toLowerCase();
+  var newPin = String(params.newPin || params.tempPin || '').trim();
+  if (!targetUsername) return fail_('กรุณาระบุ username ครูที่ต้องการรีเซ็ต');
 
   var tempPin = String(newPin || '').trim();
   if (!tempPin) {
@@ -474,7 +550,7 @@ function adminResetTeacherPin_(adminUsername, adminPin, targetUsername, newPin) 
 
   var targetRow = -1;
   for (var r = 1; r < vals.length; r++) {
-    if (String(vals[r][iUsername] || '').trim().toLowerCase() === targetLogin) {
+    if (String(vals[r][iUsername] || '').trim().toLowerCase() === targetUsername) {
       targetRow = r;
       break;
     }
@@ -490,7 +566,7 @@ function adminResetTeacherPin_(adminUsername, adminPin, targetUsername, newPin) 
   var teacherName = iName >= 0 ? String(vals[targetRow][iName] || '').trim() : '';
   return ok_({
     success: true,
-    username: targetLogin,
+    username: targetUsername,
     teacher_name: teacherName,
     temp_pin: tempPin,
     must_change_pin: true
@@ -499,33 +575,587 @@ function adminResetTeacherPin_(adminUsername, adminPin, targetUsername, newPin) 
 
 /** @returns {{ ok: boolean, error?: string, admin?: Object }} */
 function verifyAdminPin_(adminUsername, adminPin) {
-  var login = String(adminUsername || '').trim().toLowerCase();
-  var pin = String(adminPin || '').trim();
-  if (!login || !pin) return { ok: false, error: 'กรุณาระบุรหัสผู้ดูแลและ PIN' };
+  return verifyAdminWrite_({ adminUsername: adminUsername, adminPin: adminPin });
+}
+
+/**
+ * Verify admin for write operations — accepts username and/or teacher name.
+ * Legacy admins without PIN can proceed when PIN columns are empty.
+ * @param {Object} params
+ */
+function verifyAdminWrite_(params) {
+  params = params || {};
+  var adminUsername = String(params.adminUsername || '').trim().toLowerCase();
+  var adminTeacherName = String(params.adminTeacherName || params.teacherName || '').trim();
+  var adminPin = String(params.adminPin || '').trim();
 
   var teachers = readTeachers_();
   var admin = null;
   var i;
-  for (i = 0; i < teachers.length; i++) {
-    if (String(teachers[i].USERNAME || '').trim().toLowerCase() === login) {
-      admin = teachers[i];
-      break;
+
+  if (adminUsername) {
+    for (i = 0; i < teachers.length; i++) {
+      if (String(teachers[i].USERNAME || '').trim().toLowerCase() === adminUsername) {
+        admin = teachers[i];
+        break;
+      }
     }
   }
+
+  if (!admin && adminTeacherName) {
+    var matches = findTeachersByLoginName_(teachers, adminTeacherName);
+    for (i = 0; i < matches.length; i++) {
+      if (teacherIsAdmin_(matches[i])) {
+        admin = matches[i];
+        break;
+      }
+    }
+  }
+
   if (!admin) return { ok: false, error: 'ไม่พบบัญชีผู้ดูแลระบบ' };
   if (!teacherIsAdmin_(admin)) return { ok: false, error: 'ไม่มีสิทธิ์ผู้ดูแลระบบ' };
-  if (!admin.ACTIVE) return { ok: false, error: 'บัญชีผู้ดูแลระบบถูกปิดการใช้งาน' };
+  if (admin.ACTIVE === false) return { ok: false, error: 'บัญชีผู้ดูแลระบบถูกปิดการใช้งาน' };
 
   var pinHash = String(admin.PIN_HASH || '').trim();
   var pinPlain = String(admin.TEACHER_PIN || '').trim();
+  if (!adminPin) return { ok: false, error: 'กรุณาระบุ PIN ผู้ดูแลระบบ' };
   if (pinHash) {
-    if (!verifyPin_(pin, pinHash)) return { ok: false, error: 'PIN ผู้ดูแลระบบไม่ถูกต้อง' };
+    if (!verifyPin_(adminPin, pinHash)) return { ok: false, error: 'PIN ผู้ดูแลระบบไม่ถูกต้อง' };
   } else if (pinPlain) {
-    if (pin !== pinPlain) return { ok: false, error: 'PIN ผู้ดูแลระบบไม่ถูกต้อง' };
+    if (adminPin !== pinPlain) return { ok: false, error: 'PIN ผู้ดูแลระบบไม่ถูกต้อง' };
   } else {
     return { ok: false, error: 'บัญชีผู้ดูแลระบบต้องตั้งรหัส PIN' };
   }
+
   return { ok: true, admin: admin };
+}
+
+/** @returns {{ header: string[], col: function(string): number }} */
+function buildSheetColLookup_(headerRow) {
+  var header = headerRow.map(normalizeHeader_);
+  return {
+    header: header,
+    col: function () {
+      var names = Array.prototype.slice.call(arguments);
+      for (var n = 0; n < names.length; n++) {
+        var pos = header.indexOf(normalizeHeader_(names[n]));
+        if (pos >= 0) return pos;
+      }
+      return -1;
+    }
+  };
+}
+
+/**
+ * @param {string[]} header
+ * @param {Object} fields
+ * @returns {Array}
+ */
+function teacherRowFromFields_(header, fields) {
+  var row = new Array(header.length).fill('');
+  var set = function (names, value) {
+    var list = Array.isArray(names) ? names : [names];
+    for (var n = 0; n < list.length; n++) {
+      var pos = header.indexOf(normalizeHeader_(list[n]));
+      if (pos >= 0) {
+        row[pos] = value;
+        return;
+      }
+    }
+  };
+  set(['TEACHER_NAME', 'TEACHER', 'NAME'], fields.teacher_name || '');
+  set(['USERNAME', 'USER_NAME', 'LOGIN'], fields.username || '');
+  set(['ASSIGNED_CLASSES', 'ASSIGNED_CLASS', 'CLASSES'], fields.assigned_classes || '');
+  set(['ROLE', 'TYPE'], fields.role || 'teacher');
+  set(['ACTIVE'], fields.active !== false);
+  if (fields.pin_hash) set(['PIN_HASH', 'PINHASH'], fields.pin_hash);
+  if (fields.must_change_pin === true) set(['MUST_CHANGE_PIN', 'FORCE_PIN_RESET'], true);
+  if (fields.must_change_pin === false) set(['MUST_CHANGE_PIN', 'FORCE_PIN_RESET'], false);
+  return row;
+}
+
+function adminCreateTeacher_(params) {
+  var auth = verifyAdminWrite_(params);
+  if (!auth.ok) return fail_(auth.error);
+
+  var teacherName = String(params.teacher_name || params.teacherName || '').trim();
+  var username = String(params.username || '').trim().toLowerCase();
+  var assigned = String(params.assigned_classes || params.assignedClasses || '').trim();
+  var role = String(params.role || 'teacher').trim().toLowerCase();
+  var initialPin = String(params.initial_pin || params.initialPin || '').trim();
+  var active = params.active !== false;
+
+  if (!teacherName) return fail_('กรุณาระบุชื่อครู');
+  if (!username) return fail_('กรุณาระบุ username');
+  if (username.length < 3) return fail_('Username ต้องมีอย่างน้อย 3 ตัวอักษร');
+  if (!teacherIsAdmin_({ role: role, ASSIGNED_CLASSES: assigned }) && !assigned) {
+    return fail_('กรุณาระบุห้องที่รับผิดชอบ (เช่น M2/1 หรือ ALL)');
+  }
+  if (initialPin && initialPin.length < 6) return fail_('PIN ต้องมีอย่างน้อย 6 หลัก');
+
+  var teachers = readTeachers_();
+  var i;
+  for (i = 0; i < teachers.length; i++) {
+    if (String(teachers[i].USERNAME || '').trim().toLowerCase() === username) {
+      return fail_('Username นี้ถูกใช้งานแล้ว');
+    }
+  }
+
+  var sh = getTeachersSheet_();
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 1) return fail_('แท็บ TEACHERS ไม่มีหัวคอลัมน์');
+  var lookup = buildSheetColLookup_(vals[0]);
+  if (lookup.col('USERNAME') < 0) return fail_('ต้องมีคอลัมน์ USERNAME ในแท็บ TEACHERS');
+
+  /** @type {Object} */
+  var fields = {
+    teacher_name: teacherName,
+    username: username,
+    assigned_classes: assigned,
+    role: role,
+    active: active
+  };
+  if (initialPin) {
+    fields.pin_hash = hashPin_(initialPin);
+    fields.must_change_pin = true;
+  }
+
+  sh.appendRow(teacherRowFromFields_(lookup.header, fields));
+  var created = readTeachers_().find(function (t) {
+    return String(t.USERNAME || '').trim().toLowerCase() === username;
+  });
+  return ok_({
+    teacher: publicTeacherRow_(created || { TEACHER_NAME: teacherName, USERNAME: username, ASSIGNED_CLASSES: assigned, ROLE: role, ACTIVE: active }),
+    temp_pin: initialPin || ''
+  });
+}
+
+function adminUpdateTeacher_(params) {
+  var auth = verifyAdminWrite_(params);
+  if (!auth.ok) return fail_(auth.error);
+
+  var username = String(params.username || params.targetUsername || '').trim().toLowerCase();
+  if (!username) return fail_('กรุณาระบุ username ครูที่ต้องการแก้ไข');
+
+  var sh = getTeachersSheet_();
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return fail_('ไม่พบข้อมูลครู');
+  var lookup = buildSheetColLookup_(vals[0]);
+  var iUsername = lookup.col('USERNAME');
+  if (iUsername < 0) return fail_('ต้องมีคอลัมน์ USERNAME');
+
+  var targetRow = -1;
+  var r;
+  for (r = 1; r < vals.length; r++) {
+    if (String(vals[r][iUsername] || '').trim().toLowerCase() === username) {
+      targetRow = r;
+      break;
+    }
+  }
+  if (targetRow < 0) return fail_('ไม่พบครูที่ต้องการแก้ไข');
+
+  var teacherName = String(params.teacher_name || params.teacherName || vals[targetRow][lookup.col('TEACHER_NAME', 'TEACHER', 'NAME')] || '').trim();
+  var assigned = String(params.assigned_classes || params.assignedClasses || vals[targetRow][lookup.col('ASSIGNED_CLASSES', 'ASSIGNED_CLASS')] || '').trim();
+  var role = String(params.role || vals[targetRow][lookup.col('ROLE', 'TYPE')] || 'teacher').trim().toLowerCase();
+  var active = params.active !== undefined ? params.active !== false : undefined;
+
+  if (!teacherName) return fail_('กรุณาระบุชื่อครู');
+  if (!teacherIsAdmin_({ role: role, ASSIGNED_CLASSES: assigned }) && !assigned) {
+    return fail_('กรุณาระบุห้องที่รับผิดชอบ');
+  }
+
+  var fields = {
+    teacher_name: teacherName,
+    username: username,
+    assigned_classes: assigned,
+    role: role
+  };
+  if (active !== undefined) fields.active = active;
+
+  var newRow = teacherRowFromFields_(lookup.header, fields);
+  for (var c = 0; c < lookup.header.length; c++) {
+    if (newRow[c] !== '' && newRow[c] !== null && newRow[c] !== undefined) {
+      vals[targetRow][c] = newRow[c];
+    }
+  }
+  if (active !== undefined && lookup.col('ACTIVE') >= 0) {
+    vals[targetRow][lookup.col('ACTIVE')] = active;
+  }
+
+  sh.getRange(2, 1, vals.length - 1, vals[0].length).setValues(vals.slice(1));
+  var updated = readTeachers_().find(function (t) {
+    return String(t.USERNAME || '').trim().toLowerCase() === username;
+  });
+  return ok_({ teacher: publicTeacherRow_(updated || {}) });
+}
+
+function adminDeactivateTeacher_(params) {
+  params.active = false;
+  return adminUpdateTeacher_(params);
+}
+
+function getStudentsSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName(STUDENTS_SHEET);
+  if (!sh) sh = ss.getSheetByName('students');
+  if (!sh) throw new Error('Sheet not found: ' + STUDENTS_SHEET);
+  return sh;
+}
+
+function buildClassKey_(level, room) {
+  var lvl = normalizeLevelForSheet_(String(level || '').trim());
+  var rm = String(room || '').trim();
+  if (!lvl || !rm) return '';
+  return lvl + '/' + rm;
+}
+
+/**
+ * @param {string[]} header
+ * @param {Object} fields
+ */
+function studentRowFromFields_(header, fields) {
+  var row = new Array(header.length).fill('');
+  var set = function (names, value) {
+    var list = Array.isArray(names) ? names : [names];
+    for (var n = 0; n < list.length; n++) {
+      var pos = header.indexOf(normalizeHeader_(list[n]));
+      if (pos >= 0) row[pos] = value;
+    }
+  };
+  var level = normalizeLevelForSheet_(String(fields.level || '').trim());
+  var room = String(fields.room || '').trim();
+  var classKey = String(fields.class_key || fields.classKey || buildClassKey_(level, room)).trim();
+  set(['STUDENT_ID'], fields.student_id || '');
+  set(['PREFIX'], fields.prefix || '');
+  set(['FIRST_NAME'], fields.first_name || '');
+  set(['LAST_NAME'], fields.last_name || '');
+  set(['LEVEL'], level);
+  set(['ROOM'], room);
+  set(['NUMBER'], fields.number || '');
+  set(['CLASS_KEY'], classKey);
+  set(['PARENT_NAME'], fields.parent_name || '');
+  set(['PARENT_PHONE'], fields.parent_phone || '');
+  return row;
+}
+
+function findStudentSheetRow_(sh, studentId) {
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 2) return { rowIndex: -1, vals: vals, lookup: buildSheetColLookup_(vals[0] || ['']) };
+  var lookup = buildSheetColLookup_(vals[0]);
+  var idxId = lookup.col('STUDENT_ID');
+  if (idxId < 0) return { rowIndex: -1, vals: vals, lookup: lookup };
+  var sid = String(studentId || '').trim();
+  for (var r = 1; r < vals.length; r++) {
+    if (String(vals[r][idxId] || '').trim() === sid) {
+      return { rowIndex: r, vals: vals, lookup: lookup };
+    }
+  }
+  return { rowIndex: -1, vals: vals, lookup: lookup };
+}
+
+function studentExists_(studentId, excludeRowIndex) {
+  var sh = getStudentsSheet_();
+  var found = findStudentSheetRow_(sh, studentId);
+  if (found.rowIndex < 0) return false;
+  if (excludeRowIndex >= 0 && found.rowIndex === excludeRowIndex) return false;
+  return true;
+}
+
+function parseStudentNumber_(value) {
+  var s = String(value || '').trim();
+  if (!s || !/^\d+$/.test(s)) return null;
+  var n = parseInt(s, 10);
+  return isNaN(n) || n < 1 ? null : n;
+}
+
+function studentSheetRowInClass_(row, lookup, level, room) {
+  var idxLvl = lookup.col('LEVEL');
+  var idxRoom = lookup.col('ROOM');
+  var idxClass = lookup.col('CLASS_KEY');
+  var lvl = idxLvl >= 0 ? String(row[idxLvl] || '').trim() : '';
+  var rm = idxRoom >= 0 ? String(row[idxRoom] || '').trim() : '';
+  var classKey = idxClass >= 0 ? String(row[idxClass] || '').trim() : '';
+  return studentMatchesClassFilter_(
+    lvl,
+    rm,
+    classKey,
+    normalizeLevelForSheet_(String(level || '').trim()),
+    String(room || '').trim()
+  );
+}
+
+function getStudentNumberFromRow_(row, lookup) {
+  var idx = lookup.col('NUMBER');
+  if (idx < 0) return null;
+  return parseStudentNumber_(row[idx]);
+}
+
+function setStudentNumberOnRow_(row, lookup, num) {
+  var idx = lookup.col('NUMBER');
+  if (idx < 0) return;
+  row[idx] = String(num);
+}
+
+function writeStudentSheetRows_(sh, vals) {
+  if (!vals || vals.length < 2) return;
+  sh.getRange(2, 1, vals.length, vals[0].length).setValues(vals.slice(1));
+}
+
+/** แทรกเลขที่ N — คนที่เลขที่ >= N ในห้องเดียวกันขยับลง +1 */
+function shiftStudentNumbersOnInsert_(vals, lookup, level, room, insertAt, excludeStudentId) {
+  if (insertAt == null) return 0;
+  if (lookup.col('NUMBER') < 0) return 0;
+  var idxId = lookup.col('STUDENT_ID');
+  var rows = [];
+  var r;
+  for (r = 1; r < vals.length; r++) {
+    if (!studentSheetRowInClass_(vals[r], lookup, level, room)) continue;
+    var sid = idxId >= 0 ? String(vals[r][idxId] || '').trim() : '';
+    if (excludeStudentId && sid === excludeStudentId) continue;
+    var num = getStudentNumberFromRow_(vals[r], lookup);
+    if (num == null || num < insertAt) continue;
+    rows.push({ r: r, num: num });
+  }
+  rows.sort(function (a, b) { return b.num - a.num; });
+  for (var i = 0; i < rows.length; i++) {
+    setStudentNumberOnRow_(vals[rows[i].r], lookup, rows[i].num + 1);
+  }
+  return rows.length;
+}
+
+/** ลบช่องเลขที่ — คนที่เลขที่ > N ในห้องเดียวกันขยับขึ้น -1 */
+function shiftStudentNumbersOnRemove_(vals, lookup, level, room, removedNum, excludeStudentId) {
+  if (removedNum == null) return 0;
+  if (lookup.col('NUMBER') < 0) return 0;
+  var idxId = lookup.col('STUDENT_ID');
+  var rows = [];
+  var r;
+  for (r = 1; r < vals.length; r++) {
+    if (!studentSheetRowInClass_(vals[r], lookup, level, room)) continue;
+    var sid = idxId >= 0 ? String(vals[r][idxId] || '').trim() : '';
+    if (excludeStudentId && sid === excludeStudentId) continue;
+    var num = getStudentNumberFromRow_(vals[r], lookup);
+    if (num == null || num <= removedNum) continue;
+    rows.push({ r: r, num: num });
+  }
+  rows.sort(function (a, b) { return a.num - b.num; });
+  for (var i = 0; i < rows.length; i++) {
+    setStudentNumberOnRow_(vals[rows[i].r], lookup, rows[i].num - 1);
+  }
+  return rows.length;
+}
+
+/** ย้ายเลขที่ภายในห้องเดียวกัน */
+function shiftStudentNumbersOnMove_(vals, lookup, level, room, oldNum, newNum, studentId) {
+  if (oldNum == null || newNum == null || oldNum === newNum) return 0;
+  if (lookup.col('NUMBER') < 0) return 0;
+  var idxId = lookup.col('STUDENT_ID');
+  var rows = [];
+  var r;
+  if (newNum < oldNum) {
+    for (r = 1; r < vals.length; r++) {
+      if (!studentSheetRowInClass_(vals[r], lookup, level, room)) continue;
+      var sid = idxId >= 0 ? String(vals[r][idxId] || '').trim() : '';
+      if (sid === studentId) continue;
+      var num = getStudentNumberFromRow_(vals[r], lookup);
+      if (num == null || num < newNum || num >= oldNum) continue;
+      rows.push({ r: r, num: num });
+    }
+    rows.sort(function (a, b) { return b.num - a.num; });
+    for (var i = 0; i < rows.length; i++) {
+      setStudentNumberOnRow_(vals[rows[i].r], lookup, rows[i].num + 1);
+    }
+  } else {
+    for (r = 1; r < vals.length; r++) {
+      if (!studentSheetRowInClass_(vals[r], lookup, level, room)) continue;
+      sid = idxId >= 0 ? String(vals[r][idxId] || '').trim() : '';
+      if (sid === studentId) continue;
+      num = getStudentNumberFromRow_(vals[r], lookup);
+      if (num == null || num <= oldNum || num > newNum) continue;
+      rows.push({ r: r, num: num });
+    }
+    rows.sort(function (a, b) { return a.num - b.num; });
+    for (var j = 0; j < rows.length; j++) {
+      setStudentNumberOnRow_(vals[rows[j].r], lookup, rows[j].num - 1);
+    }
+  }
+  return rows.length;
+}
+
+function applyStudentNumberChanges_(vals, lookup, opts) {
+  var shifted = 0;
+  var oldLevel = opts.oldLevel;
+  var oldRoom = opts.oldRoom;
+  var newLevel = opts.newLevel;
+  var newRoom = opts.newRoom;
+  var oldNum = opts.oldNum;
+  var newNum = opts.newNum;
+  var studentId = opts.studentId;
+  var classChanged = oldLevel !== newLevel || oldRoom !== newRoom;
+
+  if (classChanged) {
+    if (oldNum != null) {
+      shifted += shiftStudentNumbersOnRemove_(vals, lookup, oldLevel, oldRoom, oldNum, studentId);
+    }
+    if (newNum != null) {
+      shifted += shiftStudentNumbersOnInsert_(vals, lookup, newLevel, newRoom, newNum, studentId);
+    }
+  } else if (newNum != null && oldNum != null) {
+    shifted += shiftStudentNumbersOnMove_(vals, lookup, newLevel, newRoom, oldNum, newNum, studentId);
+  } else if (newNum != null && oldNum == null) {
+    shifted += shiftStudentNumbersOnInsert_(vals, lookup, newLevel, newRoom, newNum, studentId);
+  } else if (newNum == null && oldNum != null) {
+    shifted += shiftStudentNumbersOnRemove_(vals, lookup, newLevel, newRoom, oldNum, studentId);
+  }
+  return shifted;
+}
+
+function adminCreateStudent_(params) {
+  var auth = verifyAdminWrite_(params);
+  if (!auth.ok) return fail_(auth.error);
+
+  var studentId = String(params.student_id || params.studentId || '').trim();
+  var firstName = String(params.first_name || params.firstName || '').trim();
+  var lastName = String(params.last_name || params.lastName || '').trim();
+  var level = normalizeLevelForSheet_(String(params.level || '').trim());
+  var room = String(params.room || '').trim();
+
+  if (!studentId) return fail_('กรุณาระบุรหัสนักเรียน');
+  if (!firstName) return fail_('กรุณาระบุชื่อ');
+  if (!level) return fail_('กรุณาระบุระดับชั้น (LEVEL)');
+  if (!room) return fail_('กรุณาระบุห้อง (ROOM)');
+  if (studentExists_(studentId)) return fail_('รหัสนักเรียนนี้มีอยู่แล้ว');
+
+  var sh = getStudentsSheet_();
+  var vals = sh.getDataRange().getValues();
+  if (vals.length < 1) return fail_('แท็บ Students ไม่มีหัวคอลัมน์');
+  var lookup = buildSheetColLookup_(vals[0]);
+
+  var fields = {
+    student_id: studentId,
+    prefix: String(params.prefix || '').trim(),
+    first_name: firstName,
+    last_name: lastName,
+    level: level,
+    room: room,
+    number: String(params.number || '').trim(),
+    parent_name: String(params.parent_name || params.parentName || '').trim(),
+    parent_phone: String(params.parent_phone || params.parentPhone || '').trim()
+  };
+
+  var newNum = parseStudentNumber_(fields.number);
+  var shifted = 0;
+  if (newNum != null) {
+    shifted = shiftStudentNumbersOnInsert_(vals, lookup, level, room, newNum, null);
+    if (shifted > 0) writeStudentSheetRows_(sh, vals);
+  }
+
+  sh.appendRow(studentRowFromFields_(lookup.header, fields));
+  var list = readStudents_('', '');
+  var created = null;
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].student_id === studentId) {
+      created = list[i];
+      break;
+    }
+  }
+  return ok_({ student: created || fields, numbers_shifted: shifted });
+}
+
+function adminUpdateStudent_(params) {
+  var auth = verifyAdminWrite_(params);
+  if (!auth.ok) return fail_(auth.error);
+
+  var studentId = String(params.student_id || params.studentId || '').trim();
+  if (!studentId) return fail_('กรุณาระบุรหัสนักเรียน');
+
+  var sh = getStudentsSheet_();
+  var found = findStudentSheetRow_(sh, studentId);
+  if (found.rowIndex < 0) return fail_('ไม่พบนักเรียน');
+
+  var row = found.vals[found.rowIndex];
+  var lookup = found.lookup;
+  var getCell = function (names, fallback) {
+    var pos = lookup.col.apply(null, names);
+    if (pos < 0) return fallback || '';
+    return row[pos];
+  };
+
+  var fields = {
+    student_id: studentId,
+    prefix: String(params.prefix !== undefined ? params.prefix : getCell(['PREFIX'], '')).trim(),
+    first_name: String(params.first_name || params.firstName || getCell(['FIRST_NAME'], '')).trim(),
+    last_name: String(params.last_name || params.lastName || getCell(['LAST_NAME'], '')).trim(),
+    level: normalizeLevelForSheet_(String(params.level || getCell(['LEVEL'], '')).trim()),
+    room: String(params.room !== undefined ? params.room : getCell(['ROOM'], '')).trim(),
+    number: String(params.number !== undefined ? params.number : getCell(['NUMBER'], '')).trim(),
+    parent_name: String(params.parent_name || params.parentName || getCell(['PARENT_NAME'], '')).trim(),
+    parent_phone: String(params.parent_phone || params.parentPhone || getCell(['PARENT_PHONE'], '')).trim()
+  };
+
+  if (!fields.first_name) return fail_('กรุณาระบุชื่อ');
+  if (!fields.level) return fail_('กรุณาระบุระดับชั้น');
+  if (!fields.room) return fail_('กรุณาระบุห้อง');
+
+  var oldLevel = normalizeLevelForSheet_(String(getCell(['LEVEL'], '')).trim());
+  var oldRoom = String(getCell(['ROOM'], '')).trim();
+  var oldNum = parseStudentNumber_(getCell(['NUMBER'], ''));
+  var newNum = parseStudentNumber_(fields.number);
+  var shifted = applyStudentNumberChanges_(found.vals, lookup, {
+    oldLevel: oldLevel,
+    oldRoom: oldRoom,
+    newLevel: fields.level,
+    newRoom: fields.room,
+    oldNum: oldNum,
+    newNum: newNum,
+    studentId: studentId
+  });
+
+  var newRow = studentRowFromFields_(lookup.header, fields);
+  for (var c = 0; c < lookup.header.length; c++) {
+    if (newRow[c] !== '' && newRow[c] !== null && newRow[c] !== undefined) {
+      found.vals[found.rowIndex][c] = newRow[c];
+    }
+  }
+  writeStudentSheetRows_(sh, found.vals);
+
+  var list = readStudents_('', '');
+  var updated = null;
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].student_id === studentId) {
+      updated = list[i];
+      break;
+    }
+  }
+  return ok_({ student: updated || fields, numbers_shifted: shifted });
+}
+
+function adminDeleteStudent_(params) {
+  var auth = verifyAdminWrite_(params);
+  if (!auth.ok) return fail_(auth.error);
+
+  var studentId = String(params.student_id || params.studentId || '').trim();
+  if (!studentId) return fail_('กรุณาระบุรหัสนักเรียน');
+
+  var sh = getStudentsSheet_();
+  var found = findStudentSheetRow_(sh, studentId);
+  if (found.rowIndex < 0) return fail_('ไม่พบนักเรียน');
+
+  var lookup = found.lookup;
+  var row = found.vals[found.rowIndex];
+  var idxLvl = lookup.col('LEVEL');
+  var idxRoom = lookup.col('ROOM');
+  var level = idxLvl >= 0 ? normalizeLevelForSheet_(String(row[idxLvl] || '').trim()) : '';
+  var room = idxRoom >= 0 ? String(row[idxRoom] || '').trim() : '';
+  var oldNum = getStudentNumberFromRow_(row, lookup);
+  var shifted = 0;
+  if (oldNum != null && level && room) {
+    shifted = shiftStudentNumbersOnRemove_(found.vals, lookup, level, room, oldNum, studentId);
+    if (shifted > 0) writeStudentSheetRows_(sh, found.vals);
+  }
+
+  sh.deleteRow(found.rowIndex + 1);
+  return ok_({ deleted: true, student_id: studentId, numbers_shifted: shifted });
 }
 
 function hashPin_(pin) {

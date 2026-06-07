@@ -6,6 +6,7 @@ import {
   deleteAttendanceRecord,
   buildAttendanceClassKey
 } from '../services/attendanceService.js';
+import { resyncPointsAfterHistoryChange } from '../services/historyPointSync.js';
 import { openEditAttendanceModal } from '../components/editAttendanceModal.js';
 import { openConfirmModal } from '../components/confirmModal.js';
 import { fetchLevelOptions, fetchRoomOptions } from '../services/studentsService.js';
@@ -39,8 +40,10 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
 
   container.innerHTML = `${renderPageHeader({
     title: t('history.title'),
+    subtitle: t('history.subtitle'),
     topAction: 'back'
   })}
+  <p class="history-points-hint glass-card">${escapeHtml(t('history.pointsHint'))}</p>
   <section class="filter-panel glass-card">
     <div class="filter-grid">
       <label class="field"><span>${escapeHtml(t('common.date'))}</span><input type="date" id="histDate" class="input-field" value="${escapeHtml(filters.attendanceDate)}" /></label>
@@ -98,16 +101,16 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
         </div>
         <span class="${statusBadgeClass(r.status)}">${escapeHtml(statusLabel(r.status))}</span>
       </div>
-      <div class="history-card__actions">
+      <div class="history-card__actions history-card__actions--compact">
         ${
           admin
-            ? `<button type="button" class="button-secondary hist-edit" data-id="${escapeHtml(r.id)}">${escapeHtml(t('admin.edit'))}</button>`
+            ? `<button type="button" class="button-secondary button-secondary--sm hist-edit" data-id="${escapeHtml(r.id)}">${escapeHtml(t('admin.edit'))}</button>`
             : `<select class="select-field hist-status" data-id="${escapeHtml(r.id)}">
           ${STATUS_OPTIONS.map((s) => `<option value="${s}" ${s === r.status ? 'selected' : ''}>${escapeHtml(statusLabel(s))}</option>`).join('')}
         </select>
-        <button type="button" class="button-secondary hist-save" data-id="${escapeHtml(r.id)}">${escapeHtml(t('common.save'))}</button>`
+        <button type="button" class="button-secondary button-secondary--sm hist-save" data-id="${escapeHtml(r.id)}">${escapeHtml(t('common.save'))}</button>`
         }
-        <button type="button" class="button-secondary hist-delete" data-id="${escapeHtml(r.id)}">${escapeHtml(t('history.delete'))}</button>
+        <button type="button" class="button-secondary button-secondary--sm hist-delete" data-id="${escapeHtml(r.id)}">${escapeHtml(t('history.delete'))}</button>
       </div>
     </article>`
       )
@@ -131,7 +134,7 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
         levels.map((l) => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
       levelSel.dataset.rooms = JSON.stringify(roomsByLevel);
     } catch (err) {
-      onToast?.(err?.message || 'โหลด LEVEL ไม่ได้');
+      onToast?.(err?.message || t('history.loadLevelsFailed'));
     }
   }
 
@@ -183,7 +186,7 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
       renderRows();
     } catch (err) {
       console.error('[history] load failed', err);
-      if (listEl) listEl.innerHTML = renderEmpty('โหลดไม่สำเร็จ', err?.message);
+      if (listEl) listEl.innerHTML = renderEmpty(t('history.loadFailed'), err?.message);
     }
   }
 
@@ -237,10 +240,11 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
         onConfirm: async () => {
           try {
             await deleteAttendanceRecord(id);
+            await resyncPointsAfterHistoryChange(record, {}, session?.teacherName || '');
             onToast?.(t('history.deleted'));
             void refresh();
           } catch (err) {
-            onToast?.(err?.message || 'ลบไม่สำเร็จ');
+            onToast?.(err?.message || t('history.deleteFailed'));
           }
         }
       });
@@ -254,6 +258,7 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
         allowTeacherEdit: true,
         onSave: async (updates) => {
           await updateAttendanceRecord(id, updates);
+          await resyncPointsAfterHistoryChange(record, updates, session?.teacherName || '');
           onToast?.(t('history.updated'));
           void refresh();
         }
@@ -266,10 +271,11 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
       const status = sel instanceof HTMLSelectElement ? sel.value : 'present';
       try {
         await updateAttendanceRecord(id, { status });
+        await resyncPointsAfterHistoryChange(record, { status }, session?.teacherName || '');
         onToast?.(t('history.updated'));
         void refresh();
       } catch (err) {
-        onToast?.(err?.message || 'บันทึกไม่สำเร็จ');
+        onToast?.(err?.message || t('history.saveFailed'));
       }
     }
   });

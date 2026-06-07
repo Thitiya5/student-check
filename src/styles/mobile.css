@@ -1,0 +1,358 @@
+/* Mobile layout — prevent horizontal overflow, tighten cramped UI */
+
+html {
+  overflow-x: clip;
+}
+
+#app {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.page-shell {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 400px) {
+  .page-content {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .app-brand-strip {
+    margin-inline: -10px;
+    padding-inline: 10px;
+  }
+}
+
+/* —— Bottom nav (admin = 6 tabs) —— */
+.bottom-nav {
+  min-width: 0;
+}
+
+.bottom-nav-button {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.bottom-nav-label {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+@media (max-width: 420px) {
+  .bottom-nav--four .bottom-nav-button,
+  .bottom-nav--five .bottom-nav-button {
+    padding: 0.4rem 0.12rem;
+    gap: 0.12rem;
+  }
+
+  .bottom-nav--four .bottom-nav-label,
+  .bottom-nav--five .bottom-nav-label {
+    font-size: 0.58rem;
+    line-height: 1.15;
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+@media (max-width: 360px) {
+  .bottom-nav--four .bottom-nav-label {
+    display: none;
+  }
+
+  .bottom-nav--four .bottom-nav-button {
+    padding: 0.48rem 0.15rem;
+  }
+}
+
+/* —— Header —— */
+@media (max-width: 400px) {
+  .dash-header {
+    padding: 0.85rem 0.8rem 0.95rem;
+  }
+
+  .dash-header__school-name {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    font-size: 0.82rem;
+  }
+
+  .dash-header__hello {
+    font-size: 1.15rem;
+  }
+
+  .dash-header__logout,
+  .dash-header__back {
+    font-size: 0.7rem;
+    padding: 0.35rem 0.5rem;
+    max-width: 42%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* —— Modals & forms —— */
+@media (max-width: 420px) {
+  .modal-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .modal-actions .button-primary,
+  .modal-actions .button-secondary {
+    width: 100%;
+    flex: none;
+  }
+
+  .modal-sheet {
+    width: calc(100% - 1rem);
+    max-width: 100%;
+    margin-inline: auto;
+  }
+}
+
+/* —— Check / attendance —— */
+@media (max-width: 420px) {
+  .attendance-top-actions {
+    flex-wrap: wrap;
+  }
+
+  .attendance-chip-btn {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    font-size: 0.78rem;
+    padding: 0.55rem 0.5rem;
+  }
+
+  .attendance-chip-btn--sync {
+    flex: 0 0 auto;
+  }
+
+  .attendance-status-btn {
+    font-size: 0.62rem;
+    padding: 6px 1px;
+  }
+
+  .attendance-student-card__top {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  .attendance-student-card__pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+/* —— Reports list rows —— */
+@media (max-width: 400px) {
+  .reports-students__item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0.25rem;
+  }
+
+  .reports-students__pct {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .reports-students__badge {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+  }
+}
+
+/* —— History / admin cards —— */
+@media (max-width: 400px) {
+  .history-card__top,
+  .student-admin-card__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+  }
+
+  .history-card__actions,
+  .student-admin-card__actions {
+    flex-direction: column;
+  }
+
+  .history-card__actions .button-secondary,
+  .history-card__actions .button-primary,
+  .student-admin-card__actions .button-secondary,
+  .student-admin-card__actions .button-primary {
+    width: 100%;
+  }
+}
+
+/* —— Dashboard quick actions —— */
+@media (max-width: 400px) {
+  .dash-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dash-actions--five .dash-action:last-child {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: none;
+  }
+
+  .dash-action__label {
+    font-size: 0.74rem;
+  }
+}
+
+/* —— Tables —— */
+.report-table-wrap,
+.table-container {
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.report-table {
+  min-width: 0;
+}
+
+/* —— Glass cards —— */
+.glass-card,
+.filter-panel,
+.reports-toolbar {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.page-header,
+.page-header h1 {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* —— Reports page (priority) —— */
+.reports-page {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.reports-page > .report-tabs,
+.reports-page > .reports-toolbar,
+.reports-page #reportContent {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 520px) {
+  .reports-toolbar__period {
+    grid-template-columns: 1fr !important;
+  }
+
+  .reports-today-chip {
+    width: 100%;
+  }
+
+  .reports-toolbar__class-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .points-report-toolbar__period {
+    grid-template-columns: 1fr !important;
+  }
+
+  .reports-filter__control,
+  .reports-toolbar input[type='date'],
+  .reports-toolbar input[type='month'] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 400px) {
+  .report-daily-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .report-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .report-stat {
+    padding: 0.5rem 0.55rem;
+  }
+
+  .report-stat__label {
+    font-size: 0.66rem;
+    line-height: 1.2;
+  }
+
+  .report-stat__value {
+    font-size: 0.95rem;
+  }
+
+  .report-daily-header__top {
+    flex-wrap: wrap;
+  }
+
+  .report-daily-header__pct {
+    font-size: 1.15rem;
+  }
+
+  .report-class-grid {
+    gap: 0.35rem;
+  }
+
+  .report-class-chip__name {
+    font-size: 0.78rem;
+  }
+
+  .chart-col__sub {
+    white-space: normal;
+    font-size: 0.55rem;
+  }
+}
+
+/* —— History / students filters —— */
+@media (max-width: 480px) {
+  .filter-grid,
+  .filter-grid--reports,
+  .admin-toolbar__grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sticky-filters {
+    position: relative;
+    top: auto;
+  }
+
+  .students-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* —— Dashboard stats (many columns) —— */
+@media (max-width: 400px) {
+  .dash-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* —— Check page bottom save + nav —— */
+.page-content.has-fixed-save {
+  padding-bottom: calc(var(--nav-height) + var(--footer-save-height) + 0.5rem);
+}

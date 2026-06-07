@@ -15,13 +15,14 @@ import {
 } from '../services/attendanceService.js';
 import {
   loadTeacherAuthSession,
-  isAdminSession,
-  getAllowedClassKeys,
+  isSchoolWideViewSession,
+  getViewClassKeys,
   classKeysToPickerOptions,
-  canAccessLevelRoom
+  canViewLevelRoom
 } from '../services/teacherAuth.js';
 import { t } from '../i18n/index.js';
 import { renderPageHeader, renderNavQuickLinks, bindPageHeaderActions } from '../components/pageHeader.js';
+import { withBehaviorQuickLink } from '../utils/quickNavLinks.js';
 import {
   getSemesterDateRange,
   dedupeRecordsByDate,
@@ -61,11 +62,21 @@ function writeStudentsSelection(level, room) {
 /**
  * @param {Array<{ student_id: string, attendanceDate: string, status: string, createdAt?: string|null, disciplineScore?: number }>} rows
  */
-function buildClassSummaryCache(rows) {
+const RISK_SORT = { alert: 0, watch: 1, ok: 2 };
+
+/**
+ * @param {object[]} rows
+ * @param {object[]} [roster]
+ */
+function buildClassSummaryCache(rows, roster = []) {
   /** @type {Map<string, { summary: ReturnType<typeof summarizeStudentAttendance>, recentRecords: typeof rows }>} */
   const cache = new Map();
   /** @type {Map<string, typeof rows>} */
   const byStudent = new Map();
+  for (const s of roster) {
+    const sid = String(s.student_id || '').trim();
+    if (sid && !byStudent.has(sid)) byStudent.set(sid, []);
+  }
   for (const row of rows) {
     const sid = String(row.student_id);
     if (!byStudent.has(sid)) byStudent.set(sid, []);
@@ -79,6 +90,10 @@ function buildClassSummaryCache(rows) {
     });
   }
   return cache;
+}
+
+function riskSortKey(risk) {
+  return RISK_SORT[risk] ?? 3;
 }
 
 /**
@@ -97,13 +112,13 @@ function studentCard(s, risk) {
 
   return `<button type="button" class="student-admin-card glass-card${riskClass}" data-id="${escapeHtml(s.student_id)}">
     <div class="student-admin-card__head">
-      <div class="student-admin-card__title">
-        <span class="student-admin-card__no">เลขที่ ${escapeHtml(s.number || '-')}</span>
-        ${riskBadge}
-      </div>
+      <span class="student-admin-card__no">เลขที่ ${escapeHtml(s.number || '-')}</span>
       <span class="student-admin-card__chevron" aria-hidden="true">›</span>
     </div>
-    <strong class="student-admin-card__name">${escapeHtml(displayName)}</strong>
+    <div class="student-admin-card__name-row">
+      <strong class="student-admin-card__name">${escapeHtml(displayName)}</strong>
+      ${riskBadge}
+    </div>
     <p class="student-admin-card__id">รหัส ${escapeHtml(s.student_id)}${s.class_key ? ` · ${escapeHtml(s.class_key)}` : ''}</p>
     <p class="student-admin-card__meta">${escapeHtml(s.level)}/${escapeHtml(s.room)}</p>
     <p class="student-admin-card__parent">ผู้ปกครอง: ${escapeHtml(s.parent_name || '-')} · ${escapeHtml(s.parent_phone || '-')}</p>
@@ -117,8 +132,8 @@ function studentCard(s, risk) {
  */
 export function renderStudentsPage(container, { state = {}, onToast, onLogout, onNavigate, onBack } = {}) {
   const session = state.teacherAuth || loadTeacherAuthSession();
-  const admin = isAdminSession(session);
-  const allowedKeys = getAllowedClassKeys(session);
+  const schoolWide = isSchoolWideViewSession(session);
+  const viewKeys = getViewClassKeys(session);
   const savedSelection = readStudentsSelection();
 
   let level = savedSelection.level;
@@ -134,10 +149,12 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
     title: t('students.title'),
     topAction: 'back'
   })}
-  ${renderNavQuickLinks([
-    { label: t('nav.home'), path: '/dashboard' },
-    { label: t('dashboard.quick.check'), path: '/check' }
-  ])}
+  ${renderNavQuickLinks(
+    withBehaviorQuickLink(session, [
+      { label: t('nav.home'), path: '/dashboard' },
+      { label: t('dashboard.quick.check'), path: '/check' }
+    ])
+  )}
   <section class="filter-panel glass-card sticky-filters">
     <div class="filter-grid">
       <label class="field"><span>${escapeHtml(t('common.level'))}</span><select id="stuLevel" class="select-field"><option value="">${escapeHtml(t('common.select'))}</option></select></label>
@@ -179,7 +196,7 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
       listEl.innerHTML = renderEmpty(t('students.pickBoth'));
       return;
     }
-    if (!canAccessLevelRoom(session, level, room)) {
+    if (!canViewLevelRoom(session, level, room)) {
       listEl.innerHTML = renderEmpty(t('toast.classNotAllowed'));
       return;
     }
@@ -187,7 +204,14 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
       listEl.innerHTML = renderEmpty(t('students.emptyClass'));
       return;
     }
-    listEl.innerHTML = filtered
+    const sorted = [...filtered].sort((a, b) => {
+      const ra = summaryCache.get(String(a.student_id))?.summary?.risk;
+      const rb = summaryCache.get(String(b.student_id))?.summary?.risk;
+      const cmp = riskSortKey(ra) - riskSortKey(rb);
+      if (cmp !== 0) return cmp;
+      return studentFullName(a).localeCompare(studentFullName(b), 'th');
+    });
+    listEl.innerHTML = sorted
       .map((s) => {
         const cached = summaryCache.get(String(s.student_id));
         const risk = cached?.summary?.risk;
@@ -207,9 +231,10 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
         to: range.to,
         classKey
       });
-      summaryCache = buildClassSummaryCache(rows);
+      summaryCache = buildClassSummaryCache(rows, students);
     } catch (err) {
       console.warn('[students] summary prefetch failed', err);
+      onToast?.(t('students.summaryLoadFailed'));
     }
   }
 
@@ -241,14 +266,14 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
   async function loadLevels() {
     if (!gasReady) return;
     try {
-      if (admin) {
+      if (schoolWide) {
         const levels = await fetchLevelOptions();
         levelSel.innerHTML =
           `<option value="">${escapeHtml(t('common.select'))}</option>` +
           levels.map((l) => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
         return;
       }
-      const keys = allowedKeys || [];
+      const keys = viewKeys || [];
       const { levels, roomsByLevel } = classKeysToPickerOptions(keys);
       levelSel.innerHTML =
         `<option value="">${escapeHtml(t('common.select'))}</option>` +
@@ -268,7 +293,7 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
       renderList();
       return;
     }
-    if (!canAccessLevelRoom(session, level, room)) {
+    if (!canViewLevelRoom(session, level, room)) {
       students = [];
       summaryCache = new Map();
       renderList();
@@ -294,7 +319,7 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
     roomSel.disabled = !level;
     searchInput.disabled = !level;
     summaryCache = new Map();
-    if (admin && level) {
+    if (schoolWide && level) {
       try {
         const rooms = await fetchRoomOptions(level);
         roomSel.innerHTML =
@@ -303,7 +328,7 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
       } catch (err) {
         onToast?.(err?.message);
       }
-    } else if (!admin && level) {
+    } else if (!schoolWide && level) {
       try {
         const map = JSON.parse(levelSel.dataset.rooms || '{}');
         const rooms = map[level] || [];
@@ -339,9 +364,9 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
       if (!pick || !levelSel || !roomSel) return;
       sessionStorage.removeItem('studentsPickClass');
       const { level: lvl, room: rm } = parseClassKey(pick);
-      if (!lvl || !rm || !canAccessLevelRoom(session, lvl, rm)) return;
+      if (!lvl || !rm || !canViewLevelRoom(session, lvl, rm)) return;
 
-      if (admin) {
+      if (schoolWide) {
         levelSel.value = lvl;
         level = lvl;
         await loadRoomsForLevel(lvl);
@@ -381,12 +406,12 @@ export function renderStudentsPage(container, { state = {}, onToast, onLogout, o
         return;
       }
 
-      if (!level || !room || !canAccessLevelRoom(session, level, room)) return;
+      if (!level || !room || !canViewLevelRoom(session, level, room)) return;
       if (!levelSel || !roomSel) return;
 
       levelSel.value = level;
       searchInput.disabled = false;
-      if (admin) {
+      if (schoolWide) {
         await loadRoomsForLevel(level);
       } else {
         try {

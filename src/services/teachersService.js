@@ -1,21 +1,21 @@
-import { isPinLoginEnabled } from './appConfig.js';
 import {
   fetchTeachersGas,
-  verifyTeacherLoginGas,
   teacherRequiresPinGas,
-  changeTeacherPinGas,
-  adminResetTeacherPinGas
+  verifyAdminLoginByNameGas,
+  verifyPastoralPinByNameGas,
+  changeTeacherPinGas
 } from './googleAppsScript.js';
 import {
   parseAssignedClasses,
   saveTeacherAuthSession,
   isAdminSession,
+  isPastoralRoleFromSheet,
+  isPastoralSession,
   normalizeTeacherName,
   getTeacherNameCore,
   teacherNamesExactMatch,
   isReservedLoginTerm,
   isAdminRoleFromSheet,
-  teacherNamesMatch,
   teacherNameMatchScore
 } from './teacherAuth.js';
 
@@ -27,7 +27,6 @@ function findTeacherCandidates(teachers, input) {
   const normalizedInput = normalizeTeacherName(input);
   const q = normalizedInput.toLowerCase();
 
-  // Block "admin" etc. unless TEACHER_NAME in sheet is exactly that string
   if (isReservedLoginTerm(normalizedInput)) {
     const exact = teachers.filter((t) => teacherNamesExactMatch(t.teacher_name, normalizedInput));
     return exact.map((t) => ({ t, score: 100 }));
@@ -40,7 +39,6 @@ function findTeacherCandidates(teachers, input) {
 
   if (scored.length) return scored;
 
-  // Fallback: substring on full name or core name (e.g. "เกศจุฬา" in "นางสาวเกศจุฬา ภูนาเมือง")
   if (q.length < 2) return [];
 
   return teachers
@@ -97,11 +95,11 @@ export function normalizeTeacherRow(raw) {
   const assigned_raw = String(
     raw.assigned_classes ?? raw.ASSIGNED_CLASSES ?? raw.ASSIGNED_CLASS ?? ''
   ).trim();
-  const role = String(raw.role ?? raw.ROLE ?? 'teacher').trim().toLowerCase();
+  const roleRaw = String(raw.role ?? raw.ROLE ?? 'teacher').trim().toLowerCase();
   const assignedClasses = parseAssignedClasses(assigned_raw);
   const hasAll = assignedClasses.includes('ALL');
-  const isAdmin = isAdminRoleFromSheet(role) || hasAll;
-  /** Admin + ม.1/3 keeps homeroom; admin with no class → ALL */
+  const isAdmin = isAdminRoleFromSheet(roleRaw) || hasAll;
+  const isPastoral = isPastoralRoleFromSheet(roleRaw);
   const classesForSession = hasAll
     ? ['ALL']
     : assignedClasses.length
@@ -116,9 +114,10 @@ export function normalizeTeacherRow(raw) {
     userId,
     assigned_classes: assigned_raw,
     assignedClasses: classesForSession,
-    role: isAdmin ? 'admin' : role || 'teacher',
+    role: isAdmin ? 'admin' : isPastoral ? 'pastoral' : roleRaw || 'teacher',
     isAdmin,
-    mustChangePin: Boolean(raw.must_change_pin ?? raw.MUST_CHANGE_PIN ?? raw.force_pin_reset ?? raw.FORCE_PIN_RESET),
+    isPastoral,
+    mustChangePin: false,
     active:
       raw.active !== false &&
       raw.ACTIVE !== false &&
@@ -127,13 +126,9 @@ export function normalizeTeacherRow(raw) {
 }
 
 /**
- * Load teachers from Google Sheets TEACHERS tab via Apps Script getTeachers.
- * @returns {Promise<ReturnType<typeof normalizeTeacherRow>[]>}
- */
-/**
- * Whether the login form should show PIN (checked server-side; PIN never returned).
+ * Whether the login form should show PIN (admin accounts only).
  * @param {string} teacherNameInput
- * @returns {Promise<{ found: boolean, requiresPin: boolean }>}
+ * @returns {Promise<{ found: boolean, requiresPin: boolean, ambiguous?: boolean }>}
  */
 export async function checkTeacherRequiresPin(teacherNameInput) {
   const input = String(teacherNameInput ?? '').trim();
@@ -161,10 +156,28 @@ export async function fetchTeachers() {
 }
 
 /**
- * Legacy login — match TEACHER_NAME from getTeachers (no PIN).
- * @param {string} loginInput
+ * @param {ReturnType<typeof normalizeTeacherRow>} match
+ * @returns {import('./teacherAuth.js').TeacherAuthSession}
  */
-async function resolveTeacherLoginByName(loginInput) {
+function sessionFromTeacherRow(match) {
+  return {
+    teacherName: match.teacher_name,
+    username: match.username || '',
+    userId: match.userId || '',
+    role: match.role,
+    assignedClasses: match.assignedClasses,
+    isAdmin: match.isAdmin,
+    isPastoral: match.isPastoral,
+    mustChangePin: false
+  };
+}
+
+/**
+ * Login — ครูใช้ชื่ออย่างเดียว / ผู้ดูแลระบบต้องกรอก PIN
+ * @param {string} loginInput
+ * @param {string} [pinInput]
+ */
+export async function resolveTeacherLogin(loginInput, pinInput = '') {
   const input = String(loginInput ?? '').trim();
   if (!input) throw new Error('กรุณาระบุชื่อครู');
 
@@ -172,7 +185,7 @@ async function resolveTeacherLoginByName(loginInput) {
     throw new Error(`ไม่สามารถใช้ "${input}" เป็นชื่อล็อกอิน — กรุณาใช้ชื่อครูตามคอลัมน์ TEACHER_NAME`);
   }
 
-  console.log('[teachers] resolveTeacherLoginByName for:', input);
+  console.log('[teachers] resolveTeacherLogin for:', input);
 
   const teachers = await fetchTeachers();
   const candidates = findTeacherCandidates(teachers, input);
@@ -194,168 +207,187 @@ async function resolveTeacherLoginByName(loginInput) {
     throw new Error('บัญชีถูกปิดการใช้งาน');
   }
 
-  if (!match.isAdmin && !match.assignedClasses.length) {
+  if (!match.isAdmin && !match.isPastoral && !match.assignedClasses.length) {
     throw new Error('ครูท่านนี้ยังไม่ได้รับมอบหมายห้องเรียน');
   }
 
-  /** @type {import('./teacherAuth.js').TeacherAuthSession} */
-  const session = {
-    teacherName: match.teacher_name,
-    username: match.username || '',
-    userId: match.userId || '',
-    role: match.role,
-    assignedClasses: match.assignedClasses,
-    isAdmin: match.isAdmin,
-    mustChangePin: false
-  };
+  if (match.isAdmin) {
+    const pin = String(pinInput ?? '').trim();
+    if (!pin) throw new Error('กรุณากรอก PIN ผู้ดูแลระบบ');
 
-  console.log('[teachers] login OK (name):', {
-    teacherName: session.teacherName,
-    role: session.role,
-    classes: session.assignedClasses,
-    isAdmin: session.isAdmin
-  });
-
-  saveTeacherAuthSession(session);
-  return session;
-}
-
-/**
- * Resolve login — PIN mode uses GAS; legacy mode matches teacher name from sheet.
- * @param {string} loginInput
- * @param {string} [pinInput]
- */
-export async function resolveTeacherLogin(loginInput, pinInput = '') {
-  if (!isPinLoginEnabled()) {
-    return resolveTeacherLoginByName(loginInput);
-  }
-
-  const input = String(loginInput ?? '').trim();
-  const pin = String(pinInput ?? '').trim();
-  if (!input) throw new Error('กรุณาระบุชื่อผู้ใช้');
-
-  console.log('[teachers] resolveTeacherLogin for:', input);
-
-  let out;
-  try {
-    out = await verifyTeacherLoginGas(input, pin);
-  } catch (err) {
-    console.error('[teachers] verifyTeacherLogin failed:', err);
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('Unknown action')) {
-      throw new Error(
-        'เซิร์ฟเวอร์ยังไม่รองรับ verifyTeacherLogin — Deploy Web App จาก Code.gs ล่าสุด'
-      );
+    let out;
+    try {
+      out = await verifyAdminLoginByNameGas(match.teacher_name, pin);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('Unknown action')) {
+        throw new Error(
+          'เซิร์ฟเวอร์ยังไม่รองรับ verifyAdminLoginByName — Deploy Web App จาก Code.gs ล่าสุด'
+        );
+      }
+      throw err instanceof Error ? err : new Error(message);
     }
-    throw err instanceof Error ? err : new Error(message);
+
+    const verified = normalizeTeacherRow(out?.teacher ?? match);
+    const session = sessionFromTeacherRow(verified);
+    console.log('[teachers] admin login OK:', session.teacherName);
+    saveTeacherAuthSession(session);
+    return session;
   }
 
-  const raw = out?.teacher;
-  if (!raw) {
-    throw new Error('ไม่พบข้อมูลครู — ตรวจสอบแท็บ TEACHERS');
-  }
-
-  const match = normalizeTeacherRow(raw);
-
-  if (!match.isAdmin && !match.assignedClasses.length) {
-    throw new Error('ครูท่านนี้ยังไม่ได้รับมอบหมายห้องเรียน');
-  }
-
-  /** @type {import('./teacherAuth.js').TeacherAuthSession} */
-  const session = {
-    teacherName: match.teacher_name,
-    username: match.username || input,
-    userId: match.userId || '',
-    role: match.role,
-    assignedClasses: match.assignedClasses,
-    isAdmin: match.isAdmin,
-    mustChangePin: Boolean(match.mustChangePin)
-  };
-
-  console.log('[teachers] login OK:', {
-    teacherName: session.teacherName,
-    role: session.role,
-    classes: session.assignedClasses,
-    isAdmin: session.isAdmin
-  });
-
+  const session = sessionFromTeacherRow(match);
+  console.log('[teachers] teacher login OK (name):', session.teacherName);
   saveTeacherAuthSession(session);
   return session;
 }
 
 /**
+ * Admin changes own PIN.
  * @param {import('./teacherAuth.js').TeacherAuthSession} session
- * @param {{ currentPin?: string, newPin: string, newUsername?: string, forceReset?: boolean }} payload
+ * @param {{ currentPin?: string, newPin: string }} payload
  */
 export async function changeTeacherPin(session, payload) {
+  if (!isAdminSession(session)) {
+    throw new Error('ไม่มีสิทธิ์เปลี่ยน PIN');
+  }
   const newPin = String(payload?.newPin ?? '').trim();
-  const newUsername = String(payload?.newUsername ?? '').trim();
   if (newPin.length < 6) {
     throw new Error('PIN ต้องมีอย่างน้อย 6 หลัก');
-  }
-  if (newUsername && newUsername.length < 3) {
-    throw new Error('Username ต้องมีอย่างน้อย 3 ตัวอักษร');
   }
   await changeTeacherPinGas({
     teacherName: session?.teacherName,
     username: session?.username,
     currentPin: String(payload?.currentPin ?? '').trim(),
     newPin,
-    newUsername,
-    forceReset: Boolean(payload?.forceReset || session?.mustChangePin)
+    forceReset: false
   });
-  if (newUsername) {
-    session.username = newUsername;
+}
+
+/**
+ * Build admin auth payload for GAS write actions.
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {string} adminPin
+ */
+/**
+ * Verify PIN before pastoral behavior writes (admin uses admin PIN).
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {string} pin
+ */
+export async function verifyBehaviorWritePin(session, pin) {
+  const pinStr = String(pin ?? '').trim();
+  if (!pinStr) throw new Error('กรุณากรอก PIN');
+
+  if (isAdminSession(session)) {
+    await verifyAdminLoginByNameGas(session.teacherName, pinStr);
+    return;
+  }
+
+  if (isPastoralSession(session)) {
+    try {
+      await verifyPastoralPinByNameGas(session.teacherName, pinStr);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('Unknown action')) {
+        throw new Error(
+          'เซิร์ฟเวอร์ยังไม่รองรับ verifyPastoralPinByName — Deploy Web App จาก Code.gs ล่าสุด'
+        );
+      }
+      throw err instanceof Error ? err : new Error(message);
+    }
+    return;
+  }
+
+  throw new Error('ไม่มีสิทธิ์บันทึกพฤติกรรม');
+}
+
+export function buildAdminAuthPayload(session, adminPin = '') {
+  return {
+    adminUsername: String(session?.username ?? '').trim(),
+    adminTeacherName: String(session?.teacherName ?? '').trim(),
+    adminPin: String(adminPin ?? '').trim()
+  };
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {string} adminPin
+ * @param {Record<string, unknown>} payload
+ */
+async function adminGasWrite(session, adminPin, action, payload) {
+  if (!isAdminSession(session)) {
+    throw new Error('ไม่มีสิทธิ์ผู้ดูแลระบบ');
+  }
+  const { adminCreateTeacherGas, adminUpdateTeacherGas, adminDeactivateTeacherGas } = await import(
+    './googleAppsScript.js'
+  );
+  const auth = buildAdminAuthPayload(session, adminPin);
+  const body = { ...auth, ...payload };
+  const runners = {
+    create: adminCreateTeacherGas,
+    update: adminUpdateTeacherGas,
+    deactivate: adminDeactivateTeacherGas
+  };
+  const fn = runners[action];
+  if (!fn) throw new Error('Unknown admin action');
+  try {
+    return await fn(body);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('Unknown action')) {
+      throw new Error('เซิร์ฟเวอร์ยังไม่รองรับการจัดการครู — Deploy Web App จาก Code.gs ล่าสุด');
+    }
+    throw err instanceof Error ? err : new Error(message);
   }
 }
 
 /**
- * Admin resets another teacher's PIN (must re-login with temp PIN on next use).
  * @param {import('./teacherAuth.js').TeacherAuthSession} session
- * @param {{ adminPin: string, targetUsername: string, newPin?: string }} payload
- * @returns {Promise<{ username: string, teacherName: string, tempPin: string }>}
+ * @param {{ adminPin: string, teacher_name: string, username: string, assigned_classes: string, role?: string }} payload
  */
-export async function adminResetTeacherPin(session, payload) {
-  if (!isAdminSession(session)) {
-    throw new Error('ไม่มีสิทธิ์ผู้ดูแลระบบ');
-  }
-  const adminPin = String(payload?.adminPin ?? '').trim();
-  const targetUsername = String(payload?.targetUsername ?? '').trim().toLowerCase();
-  const newPin = String(payload?.newPin ?? '').trim();
-  if (!adminPin) throw new Error('กรุณากรอก PIN ผู้ดูแลระบบ');
-  if (!targetUsername) throw new Error('กรุณาเลือกครูที่ต้องการรีเซ็ต');
-  if (newPin && newPin.length < 6) {
-    throw new Error('PIN ชั่วคราวต้องมีอย่างน้อย 6 หลัก');
-  }
+export async function adminCreateTeacher(session, payload) {
+  const username = String(payload?.username ?? '').trim().toLowerCase();
+  const teacherName = String(payload?.teacher_name ?? '').trim();
+  const assigned = String(payload?.assigned_classes ?? '').trim();
+  if (!teacherName) throw new Error('กรุณาระบุชื่อครู');
+  if (!username || username.length < 3) throw new Error('Username ต้องมีอย่างน้อย 3 ตัวอักษร');
+  if (!assigned) throw new Error('กรุณาระบุห้องที่รับผิดชอบ');
 
-  let out;
-  try {
-    out = await adminResetTeacherPinGas({
-      adminUsername: session?.username || '',
-      adminPin,
-      targetUsername,
-      newPin
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('Unknown action')) {
-      throw new Error(
-        'เซิร์ฟเวอร์ยังไม่รองรับ adminResetTeacherPin — Deploy Web App จาก Code.gs ล่าสุด'
-      );
-    }
-    throw err instanceof Error ? err : new Error(message);
-  }
-
-  const tempPin = String(out?.temp_pin ?? out?.tempPin ?? '').trim();
-  if (!tempPin) {
-    throw new Error('รีเซ็ตไม่สำเร็จ — ไม่ได้รับ PIN ชั่วคราวจากเซิร์ฟเวอร์');
-  }
-
+  const out = await adminGasWrite(session, payload.adminPin, 'create', {
+    teacher_name: teacherName,
+    username,
+    assigned_classes: assigned,
+    role: String(payload?.role ?? 'teacher').trim()
+  });
   return {
-    username: String(out?.username ?? targetUsername).trim(),
-    teacherName: String(out?.teacher_name ?? out?.teacherName ?? '').trim(),
-    tempPin
+    teacher: normalizeTeacherRow(out?.teacher ?? {})
   };
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {{ adminPin: string, username: string, teacher_name?: string, assigned_classes?: string, role?: string, active?: boolean }} payload
+ */
+export async function adminUpdateTeacher(session, payload) {
+  const username = String(payload?.username ?? '').trim().toLowerCase();
+  if (!username) throw new Error('กรุณาระบุ username');
+  const out = await adminGasWrite(session, payload.adminPin, 'update', {
+    username,
+    teacher_name: String(payload?.teacher_name ?? '').trim(),
+    assigned_classes: String(payload?.assigned_classes ?? '').trim(),
+    role: String(payload?.role ?? '').trim(),
+    active: payload?.active
+  });
+  return normalizeTeacherRow(out?.teacher ?? {});
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {{ adminPin: string, username: string }} payload
+ */
+export async function adminDeactivateTeacher(session, payload) {
+  return adminGasWrite(session, payload.adminPin, 'deactivate', {
+    username: String(payload?.username ?? '').trim().toLowerCase()
+  });
 }
 
 /**
@@ -384,6 +416,7 @@ export async function refreshTeacherSessionFromSheet(teacherName) {
 
   const session = {
     teacherName: row.teacher_name,
+    username: row.username || '',
     role: row.role,
     assignedClasses: row.assignedClasses,
     isAdmin: row.isAdmin

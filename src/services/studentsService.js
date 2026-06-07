@@ -6,8 +6,13 @@
 import {
   fetchStudentsGas,
   fetchClassOptionsGas,
-  isGasConfigured
+  isGasConfigured,
+  normalizeStudentRow,
+  adminCreateStudentGas,
+  adminUpdateStudentGas,
+  adminDeleteStudentGas
 } from './googleAppsScript.js';
+import { isAdminSession } from './teacherAuth.js';
 import { buildAttendanceClassKey } from './attendanceService.js';
 import { cacheStudentsForClass, getCachedStudentsForClass } from './offlineDb.js';
 import { isOnline } from './offlineSync.js';
@@ -173,5 +178,127 @@ export async function fetchStudentsByClass(level, room) {
     if (cached?.length) return cached;
     console.error('[students] load failed:', err);
     throw err instanceof Error ? err : new Error(String(err));
+  }
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {string} adminPin
+ */
+function buildStudentAdminAuth(session, adminPin) {
+  if (!isAdminSession(session)) {
+    throw new Error('ไม่มีสิทธิ์ผู้ดูแลระบบ');
+  }
+  return {
+    adminUsername: String(session?.username ?? '').trim(),
+    adminTeacherName: String(session?.teacherName ?? '').trim(),
+    adminPin: String(adminPin ?? '').trim()
+  };
+}
+
+/**
+ * Load all students (admin roster management).
+ */
+export async function fetchAllStudents() {
+  requireGasConfigured();
+  return fetchStudentsGas({});
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {{ adminPin: string, student_id: string, prefix?: string, first_name: string, last_name?: string, level: string, room: string, number?: string, parent_name?: string, parent_phone?: string }} payload
+ */
+export async function adminCreateStudent(session, payload) {
+  const studentId = String(payload?.student_id ?? '').trim();
+  const firstName = String(payload?.first_name ?? '').trim();
+  const level = String(payload?.level ?? '').trim();
+  const room = String(payload?.room ?? '').trim();
+  if (!studentId) throw new Error('กรุณาระบุรหัสนักเรียน');
+  if (!firstName) throw new Error('กรุณาระบุชื่อ');
+  if (!level || !room) throw new Error('กรุณาเลือกชั้นและห้อง');
+
+  try {
+    const out = await adminCreateStudentGas({
+      ...buildStudentAdminAuth(session, payload.adminPin),
+      student_id: studentId,
+      prefix: String(payload?.prefix ?? '').trim(),
+      first_name: firstName,
+      last_name: String(payload?.last_name ?? '').trim(),
+      level,
+      room,
+      number: String(payload?.number ?? '').trim(),
+      parent_name: String(payload?.parent_name ?? '').trim(),
+      parent_phone: String(payload?.parent_phone ?? '').trim()
+    });
+    clearStudentsCache();
+    return {
+      student: normalizeStudentRow(out?.student ?? payload),
+      numbersShifted: Number(out?.numbers_shifted ?? 0)
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('Unknown action')) {
+      throw new Error('เซิร์ฟเวอร์ยังไม่รองรับการจัดการนักเรียน — Deploy Web App จาก Code.gs ล่าสุด');
+    }
+    throw err instanceof Error ? err : new Error(message);
+  }
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {{ adminPin: string, student_id: string, prefix?: string, first_name?: string, last_name?: string, level?: string, room?: string, number?: string, parent_name?: string, parent_phone?: string }} payload
+ */
+export async function adminUpdateStudent(session, payload) {
+  const studentId = String(payload?.student_id ?? '').trim();
+  if (!studentId) throw new Error('กรุณาระบุรหัสนักเรียน');
+
+  try {
+    const out = await adminUpdateStudentGas({
+      ...buildStudentAdminAuth(session, payload.adminPin),
+      student_id: studentId,
+      prefix: payload?.prefix,
+      first_name: payload?.first_name,
+      last_name: payload?.last_name,
+      level: payload?.level,
+      room: payload?.room,
+      number: payload?.number,
+      parent_name: payload?.parent_name,
+      parent_phone: payload?.parent_phone
+    });
+    clearStudentsCache();
+    return {
+      student: normalizeStudentRow(out?.student ?? payload),
+      numbersShifted: Number(out?.numbers_shifted ?? 0)
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('Unknown action')) {
+      throw new Error('เซิร์ฟเวอร์ยังไม่รองรับการจัดการนักเรียน — Deploy Web App จาก Code.gs ล่าสุด');
+    }
+    throw err instanceof Error ? err : new Error(message);
+  }
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {{ adminPin: string, student_id: string }} payload
+ */
+export async function adminDeleteStudent(session, payload) {
+  const studentId = String(payload?.student_id ?? '').trim();
+  if (!studentId) throw new Error('กรุณาระบุรหัสนักเรียน');
+
+  try {
+    const out = await adminDeleteStudentGas({
+      ...buildStudentAdminAuth(session, payload.adminPin),
+      student_id: studentId
+    });
+    clearStudentsCache();
+    return { deleted: true, numbersShifted: Number(out?.numbers_shifted ?? 0) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('Unknown action')) {
+      throw new Error('เซิร์ฟเวอร์ยังไม่รองรับการจัดการนักเรียน — Deploy Web App จาก Code.gs ล่าสุด');
+    }
+    throw err instanceof Error ? err : new Error(message);
   }
 }

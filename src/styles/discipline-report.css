@@ -1,0 +1,266 @@
+/* Discipline inspection report — monthly overview + class matrix */
+
+.disc-report-toolbar .disc-report-load-btn {
+  width: auto;
+  min-width: 5.5rem;
+  align-self: flex-end;
+}
+
+.disc-report-summary {
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.disc-report-summary__dates {
+  margin: 0 0 var(--space-3);
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.disc-report-summary__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.disc-report-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.55rem 0.35rem;
+  border-radius: var(--radius-sm);
+  background: rgba(124, 77, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+}
+
+.disc-report-stat__val {
+  font-size: 1.35rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.disc-report-stat__val--warn {
+  color: #d97706;
+}
+
+.disc-report-stat__val--miss {
+  color: var(--status-absent);
+}
+
+.disc-report-stat__lbl {
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-align: center;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.disc-report-section-title {
+  margin: 0 0 var(--space-3);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.disc-report-class-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.disc-report-class-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border-subtle);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.disc-report-class-card:hover {
+  border-color: var(--border-glass);
+  box-shadow: var(--shadow-soft);
+}
+
+.disc-report-class-card__key {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.disc-report-class-card__meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.disc-report-badge {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.disc-report-badge--ok {
+  color: var(--status-present);
+  background: var(--status-present-soft);
+}
+
+.disc-report-badge--warn {
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.12);
+}
+
+.disc-report-badge--miss {
+  color: var(--status-absent);
+  background: var(--status-absent-soft);
+}
+
+.disc-report-detail {
+  padding: var(--space-4);
+}
+
+.disc-report-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.disc-report-detail__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.disc-report-detail__sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.disc-report-back-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.disc-report-edit-link {
+  margin-left: auto;
+  width: auto;
+  text-decoration: none;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.disc-report-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.disc-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.disc-report-table th,
+.disc-report-table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.disc-report-table th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: rgba(124, 77, 255, 0.04);
+}
+
+.disc-report-table td.disc-report-name {
+  text-align: left;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.disc-report-cell {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  font-weight: 800;
+}
+
+.disc-report-cell--pass {
+  color: var(--status-present);
+}
+
+.disc-report-cell--fail {
+  color: var(--status-absent);
+}
+
+.disc-report-cell--na {
+  color: var(--text-muted);
+}
+
+.disc-report-pts {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.disc-report-pts--neg {
+  color: var(--status-absent);
+}
+
+.disc-report-missing {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.disc-report-row--missing {
+  opacity: 0.65;
+}
+
+.disc-report-legend {
+  margin: var(--space-3) 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+@media (max-width: 480px) {
+  .disc-report-summary__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .disc-report-class-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 360px) {
+  .disc-report-edit-link {
+    width: 100%;
+    margin-left: 0;
+    text-align: center;
+  }
+}

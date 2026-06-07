@@ -809,6 +809,19 @@
   color: var(--text-muted);
 }
 
+.check-date-field {
+  display: block;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.inspection-block__auto {
+  margin: 0 0 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #c62828;
+}
+
 .inspection-block,
 .behavior-block {
   margin: 0 0 0.65rem;
@@ -920,17 +933,52 @@
 
 .behavior-block__note {
   margin: 0;
-  padding: 0.4rem 0.5rem;
-  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  border-radius: 10px;
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--text-secondary);
   background: rgba(15, 23, 42, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.behavior-block__note-main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.behavior-block__note-text {
+  word-break: break-word;
 }
 
 .behavior-block__note-label {
   font-weight: 750;
   color: var(--text-primary);
+}
+
+.behavior-block__return-btn {
+  flex-shrink: 0;
+  min-height: 2rem;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid color-mix(in oklab, #e5484d 35%, var(--border-glass));
+  border-radius: 8px;
+  background: color-mix(in oklab, #e5484d 8%, var(--surface));
+  color: #c92a2f;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.behavior-block__return-btn:hover,
+.behavior-block__return-btn:focus-visible {
+  background: color-mix(in oklab, #e5484d 14%, var(--surface));
+  outline: none;
 }
 
 [data-theme='dark'] .behavior-block__note {

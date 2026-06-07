@@ -46,6 +46,13 @@ export function getRoutePath(path = '') {
   return getHashPath(path).split('?')[0];
 }
 
+/** @param {string} [path] */
+export function getHashQuery(path = '') {
+  const full = getHashPath(path);
+  const q = full.includes('?') ? full.slice(full.indexOf('?') + 1) : '';
+  return new URLSearchParams(q);
+}
+
 function scrollStorageKey(route) {
   return `${SCROLL_PREFIX}${route}`;
 }

@@ -6,7 +6,8 @@ import { goBackTo } from '../services/navigation.js';
 import { buildAttendanceClassKey } from '../services/attendanceService.js';
 import { openConfirmModal } from '../components/confirmModal.js';
 import { studentFullName } from '../services/studentsService.js';
-import { getStartingScore } from '../services/appSettingsService.js';
+import { getStartingScore, getCommunityServiceThreshold } from '../services/appSettingsService.js';
+import { requiresCommunityService } from '../services/studentScoreService.js';
 import {
   queryStudentTransactions as loadTxns,
   createManualTransaction,
@@ -109,12 +110,15 @@ export function renderStudentProfilePage(container, ctx = {}) {
     const name = getStudentName();
     const att = report.attendance;
     const baseScore = getStartingScore();
+    const csThreshold = getCommunityServiceThreshold();
     const scoreTone =
-      report.totalScore < baseScore
-        ? 'is-negative'
-        : report.totalScore > baseScore
-          ? 'is-positive'
-          : '';
+      requiresCommunityService(report.totalScore, csThreshold)
+        ? 'is-critical'
+        : report.totalScore < baseScore
+          ? 'is-negative'
+          : report.totalScore > baseScore
+            ? 'is-positive'
+            : '';
 
     const parentAlert = report.parentRisk.shouldWarn
       ? `<div class="profile-hero__alert" role="alert">
@@ -123,8 +127,19 @@ export function renderStudentProfilePage(container, ctx = {}) {
       </div>`
       : '';
 
+    const csAlert = requiresCommunityService(report.totalScore, csThreshold)
+      ? `<div class="profile-hero__alert profile-hero__alert--cs" role="alert">
+        <span class="profile-alert__badge profile-alert__badge--cs">${escapeHtml(t('points.communityServiceBadge'))}</span>
+        <div>
+          <strong>${escapeHtml(t('points.communityServiceTitle'))}</strong>
+          <span>${escapeHtml(t('points.communityServiceBody', { threshold: csThreshold }))}</span>
+        </div>
+      </div>`
+      : '';
+
     return `
       <section class="profile-hero glass-card">
+        ${csAlert}
         ${parentAlert}
         <h2 class="profile-hero__name">${escapeHtml(name)}</h2>
         <p class="profile-hero__meta">รหัส ${escapeHtml(studentId)}${classKey ? ` · ${escapeHtml(classKey)}` : ''}</p>

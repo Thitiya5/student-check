@@ -3,6 +3,7 @@ export const PARENT_RISK_STATUS_KEYS = ['absent', 'late', 'errand', 'sick', 'lea
 
 export {
   getStartingScore,
+  getCommunityServiceThreshold,
   getDisciplineStartDate,
   getParentMeetingThresholdPercent,
   isDisciplineActiveDate

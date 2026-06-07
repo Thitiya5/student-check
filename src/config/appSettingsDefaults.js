@@ -8,6 +8,8 @@
 export const DEFAULT_APP_SETTINGS = {
   attendance: {
     enabled: true,
+    /** เริ่มหักคะแนนขาด/สายจากวันนี้ (yyyy-MM-dd) */
+    startDate: '2026-06-01',
     absentDeduction: 1,
     lateDeduction: 1
   },
@@ -32,6 +34,8 @@ export const DEFAULT_APP_SETTINGS = {
     thresholdPercent: 60
   },
   scoring: {
-    startingScore: 100
+    startingScore: 100,
+    /** คะแนนต่ำกว่านี้ต้องบำเพ็ญประโยชน์ */
+    communityServiceThreshold: 60
   }
 };

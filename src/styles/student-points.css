@@ -3,6 +3,227 @@
   margin-bottom: 0.75rem;
 }
 
+/* ——— หน้าจัดการ (admin) — เมนูหลัก ——— */
+.admin-hub {
+  padding: 0.65rem 0.7rem;
+  margin-bottom: 0.5rem;
+}
+
+.admin-hub__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.admin-hub__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.2rem;
+  min-height: 3.25rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(28, 21, 53, 0.04);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-hub__btn:hover {
+  border-color: var(--border-glass);
+  box-shadow: var(--shadow-soft);
+}
+
+.admin-hub__btn:active {
+  transform: scale(0.99);
+}
+
+.admin-hub__btn--wide {
+  grid-column: 1 / -1;
+  min-height: auto;
+}
+
+.admin-hub__label {
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--primary);
+}
+
+.admin-hub__sub {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+/* ——— หน้าจัดการ (admin) — กระชับ ——— */
+.admin-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  margin-bottom: 0.5rem;
+}
+
+.admin-toolbar--sub {
+  gap: 0;
+}
+
+.admin-toolbar--filters {
+  gap: 0;
+}
+
+.admin-toolbar__nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.admin-nav-btn {
+  width: 100%;
+  margin: 0;
+  padding: 0.42rem 0.45rem;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(108, 76, 255, 0.08);
+  color: var(--primary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.admin-nav-btn:active {
+  transform: scale(0.99);
+  background: rgba(108, 76, 255, 0.14);
+}
+
+.admin-toolbar__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(108, 76, 255, 0.1);
+}
+
+.admin-toolbar--filters .admin-toolbar__filters,
+.admin-toolbar--sub + .admin-toolbar--filters {
+  padding-top: 0;
+  border-top: none;
+}
+
+.admin-toolbar__grid {
+  display: grid;
+  gap: 0.4rem 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-toolbar__field {
+  min-width: 0;
+  font-size: 0.7rem;
+  gap: 0.16rem;
+}
+
+.admin-toolbar__field span {
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.admin-toolbar__field .input-field,
+.admin-toolbar__field .select-field {
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.45rem;
+  font-size: 0.84rem;
+  min-height: 2.05rem;
+  border-radius: 8px;
+}
+
+.admin-toolbar__field--search {
+  grid-column: 1 / -1;
+}
+
+.button-primary--compact {
+  width: 100%;
+  padding: 0.48rem 0.65rem;
+  font-size: 0.88rem;
+}
+
+.admin-page #adminList,
+#adminTeachersList,
+#adminStudentsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.admin-page .history-card,
+.admin-page .admin-card,
+.admin-student-card,
+.admin-teacher-card {
+  padding: 0.55rem 0.65rem;
+  margin: 0;
+  gap: 0.4rem;
+}
+
+.admin-page .history-card__name,
+.admin-student-card__name,
+.admin-teacher-card__name {
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.admin-page .history-card__meta,
+.admin-student-card__meta {
+  font-size: 0.72rem;
+  margin-top: 0.12rem;
+}
+
+.history-card__actions--compact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.history-card__actions--compact .button-secondary {
+  width: 100%;
+  min-height: 0;
+}
+
+.history-card__actions--compact .hist-status,
+.history-card__actions--compact .select-field {
+  grid-column: 1 / -1;
+  min-height: 2rem;
+  font-size: 0.84rem;
+  padding: 0.38rem 0.45rem;
+}
+
+.admin-teacher-card__actions.history-card__actions--compact {
+  flex-direction: unset;
+}
+
+.admin-teacher-card {
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.admin-teacher-card__details {
+  gap: 0.35rem;
+}
+
+.admin-student-card {
+  gap: 0.4rem;
+  padding: 0.55rem 0.65rem;
+}
+
 .admin-quick-actions--grid {
   display: grid;
   gap: 0.5rem;
@@ -67,6 +288,11 @@
   color: #c62828;
 }
 
+.admin-teacher-card__badge--pastoral {
+  background: rgba(46, 125, 50, 0.14);
+  color: #2e7d32;
+}
+
 .admin-teacher-card--inactive {
   opacity: 0.65;
 }
@@ -102,6 +328,87 @@
   width: 100%;
   margin: 0;
   min-height: 2.75rem;
+}
+
+.admin-teacher-card__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.admin-teacher-card__actions .button-secondary {
+  width: 100%;
+  min-height: 0;
+}
+
+.admin-toolbar {
+  margin-bottom: 0.5rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.admin-toolbar .button-primary {
+  width: 100%;
+}
+
+.admin-form-modal {
+  max-height: min(90vh, 720px);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.admin-form .field {
+  text-align: left;
+}
+
+.admin-students-filters {
+  margin-bottom: 0.75rem;
+  padding: 0.85rem 1rem;
+}
+
+#adminStudentsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.admin-student-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 1rem;
+  margin: 0;
+}
+
+.admin-student-card__name {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-student-card__meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.88rem;
+  color: var(--color-muted, #666);
+}
+
+.admin-student-card__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.admin-student-card__actions .button-secondary {
+  width: 100%;
+  min-height: 0;
+}
+
+.button-danger {
+  background: #c62828;
+  border-color: #c62828;
+  color: #fff;
+}
+
+.page-content--admin-students {
+  padding-bottom: 1rem;
 }
 
 .admin-reset-form {
@@ -242,8 +549,10 @@
 }
 
 .button-secondary--sm {
-  padding: 0.35rem 0.65rem;
-  font-size: 0.72rem;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.76rem;
+  min-height: 0;
+  line-height: 1.2;
 }
 
 .inspection-hint {
@@ -274,6 +583,34 @@
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+.inspection-correction-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in oklab, #d97706 35%, var(--border-glass));
+  background: color-mix(in oklab, #d97706 10%, var(--surface));
+  font-size: 0.82rem;
+  color: #b45309;
+}
+
+.inspection-chip-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--color-text-muted, #666);
+}
+
+.inspection-stale-banner {
+  margin: 0 0 0.65rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #8a4b00;
+  background: color-mix(in oklab, #f5a623 14%, var(--surface));
+  border: 1px solid color-mix(in oklab, #f5a623 35%, var(--border-glass));
 }
 
 .inspection-card__auto {
@@ -479,234 +816,7 @@
   color: var(--text-secondary);
 }
 
-.dash-alerts {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.dash-alert {
-  padding: 0.85rem 1rem;
-}
-
-.dash-alert--danger,
-.dash-alert--risk {
-  border-left: 3px solid #e5484d;
-}
-
-.dash-alert--risk {
-  padding: 0.6rem 0.7rem 0.65rem;
-}
-
-.dash-alert--warn {
-  border-left: 4px solid #f5a623;
-}
-
-.dash-alert--info {
-  border-left: 4px solid #3b82f6;
-}
-
-.dash-alert strong {
-  display: block;
-  margin-bottom: 0.2rem;
-}
-
-.dash-alert p {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.dash-alert__criteria {
-  margin: 0.1rem 0 0.4rem !important;
-  font-size: 0.74rem !important;
-}
-
-.dash-alert__class {
-  margin: 0.4rem 0 0;
-  padding: 0.45rem 0.55rem;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.45);
-}
-
-.dash-alert__class-name {
-  display: block;
-  font-size: 0.78rem;
-  font-weight: 750;
-  color: var(--purple-700);
-  margin-bottom: 0.15rem;
-}
-
-.dash-alert__class-students {
-  margin: 0 !important;
-  font-size: 0.78rem !important;
-  line-height: 1.45;
-}
-
-.dash-risk-head__title {
-  margin: 0;
-  font-size: 0.88rem;
-  font-weight: 750;
-  line-height: 1.35;
-  color: var(--text-primary);
-}
-
-.dash-risk-head__meta {
-  margin: 0.15rem 0 0;
-  font-size: 0.68rem;
-  line-height: 1.4;
-  color: var(--text-muted);
-}
-
-.dash-risk-class-list {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.22rem;
-  max-height: 10.5rem;
-  overflow-y: auto;
-  margin-top: 0.45rem;
-  padding: 0.15rem 0.1rem 0.05rem 0;
-  scrollbar-width: thin;
-}
-
-@media (min-width: 420px) {
-  .dash-risk-class-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-height: 9.5rem;
-  }
-}
-
-.dash-risk-class {
-  border-radius: 8px;
-  border: 1px solid rgba(108, 76, 255, 0.1);
-  background: rgba(255, 255, 255, 0.5);
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.dash-risk-class[open] {
-  border-color: rgba(229, 72, 77, 0.22);
-  background: rgba(255, 247, 248, 0.95);
-  grid-column: 1 / -1;
-}
-
-.dash-risk-class__summary {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.32rem 0.45rem;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.dash-risk-class__summary::-webkit-details-marker {
-  display: none;
-}
-
-.dash-risk-class__key {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--purple-700);
-  letter-spacing: -0.01em;
-}
-
-.dash-risk-class__badge {
-  flex-shrink: 0;
-  min-width: 1.15rem;
-  padding: 0.05rem 0.3rem;
-  border-radius: 6px;
-  font-size: 0.65rem;
-  font-weight: 750;
-  text-align: center;
-  color: #c81e35;
-  background: rgba(229, 72, 77, 0.1);
-}
-
-.dash-risk-class__chev {
-  margin-left: auto;
-  font-size: 0.85rem;
-  line-height: 1;
-  color: var(--text-muted);
-  transition: transform 0.18s ease;
-}
-
-.dash-risk-class[open] .dash-risk-class__chev {
-  transform: rotate(90deg);
-  color: #c81e35;
-}
-
-.dash-risk-class__body {
-  padding: 0 0.45rem 0.4rem;
-}
-
-.dash-risk-student-list {
-  margin: 0.15rem 0 0.25rem;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  max-height: 7rem;
-  overflow-y: auto;
-}
-
-.dash-risk-student {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.35rem;
-  padding: 0.2rem 0.25rem;
-  border-radius: 6px;
-  font-size: 0.72rem;
-  background: rgba(255, 255, 255, 0.65);
-}
-
-.dash-risk-student__name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dash-risk-student__pct {
-  flex-shrink: 0;
-  font-size: 0.68rem;
-  font-weight: 750;
-  color: #c81e35;
-}
-
-.dash-risk-class__link {
-  display: inline-block;
-  margin: 0 0 0.1rem;
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: 0.68rem;
-  font-weight: 650;
-  color: var(--primary);
-  cursor: pointer;
-  text-align: left;
-}
-
-.dash-risk-class__link:hover {
-  text-decoration: underline;
-}
-
-[data-theme='dark'] .dash-risk-class {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme='dark'] .dash-risk-class[open] {
-  background: rgba(229, 72, 77, 0.08);
-}
-
-[data-theme='dark'] .dash-risk-student {
-  background: rgba(0, 0, 0, 0.15);
-}
-
-.dash-alert__btn {
-  margin-top: 0.5rem;
-}
+/* Dashboard alerts — see dashboard-home.css */
 
 .reports-behavior {
   padding: 0.9rem 1rem;
@@ -791,6 +901,27 @@
   border: 1px solid rgba(229, 72, 77, 0.25);
 }
 
+.profile-hero__alert--cs {
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  color: #9a3412;
+  background: linear-gradient(135deg, rgba(255, 237, 213, 0.95), rgba(254, 226, 226, 0.85));
+  border-color: rgba(234, 88, 12, 0.35);
+}
+
+.profile-hero__alert--cs strong {
+  display: block;
+  font-size: 0.82rem;
+  margin-bottom: 0.15rem;
+}
+
+.profile-alert__badge--cs {
+  background: rgba(234, 88, 12, 0.18) !important;
+  color: #c2410c !important;
+  border-color: rgba(234, 88, 12, 0.3) !important;
+}
+
 .profile-hero__name {
   margin: 0 0 0.2rem;
   font-size: 1.2rem;
@@ -818,6 +949,10 @@
 
 .profile-hero__score.is-negative .profile-hero__score-val {
   color: #e5484d;
+}
+
+.profile-hero__score.is-critical .profile-hero__score-val {
+  color: #c2410c;
 }
 
 .profile-hero__score.is-positive .profile-hero__score-val {

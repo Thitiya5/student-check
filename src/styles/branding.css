@@ -131,8 +131,10 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  margin: calc(-1 * (16px + env(safe-area-inset-top))) -16px 0.75rem;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  margin-top: calc(-1 * (16px + env(safe-area-inset-top)));
+  margin-bottom: 0.75rem;
+  margin-inline: calc(-1 * clamp(12px, 4vw, 16px));
+  padding: calc(10px + env(safe-area-inset-top)) clamp(12px, 4vw, 16px) 10px;
   background: var(--brand-strip-bg);
   border-bottom: 1px solid var(--border-glass);
   backdrop-filter: blur(16px);

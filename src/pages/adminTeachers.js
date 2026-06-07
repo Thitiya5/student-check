@@ -2,8 +2,14 @@ import { escapeHtml } from '../utils/html.js';
 import { renderLoading, renderEmpty } from '../utils/ui.js';
 import { t } from '../i18n/index.js';
 import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeader.js';
+import { renderAdminPinField, readAdminPin } from '../components/adminPinField.js';
 import { loadTeacherAuthSession, isAdminSession } from '../services/teacherAuth.js';
-import { fetchTeachers, adminResetTeacherPin } from '../services/teachersService.js';
+import {
+  fetchTeachers,
+  adminCreateTeacher,
+  adminUpdateTeacher,
+  adminDeactivateTeacher
+} from '../services/teachersService.js';
 
 /**
  * @param {HTMLElement} container
@@ -24,8 +30,11 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
     subtitle: t('adminTeachers.subtitle'),
     topAction: 'back'
   })}
-  <section class="glass-card admin-teachers-search">
-    <label class="field">
+  <section class="glass-card admin-toolbar admin-toolbar--sub">
+    <button type="button" class="button-primary button-primary--compact" id="adminTeacherAdd">${escapeHtml(t('adminTeachers.add'))}</button>
+  </section>
+  <section class="glass-card admin-toolbar admin-toolbar--filters">
+    <label class="field admin-toolbar__field admin-toolbar__field--search">
       <span>${escapeHtml(t('adminTeachers.search'))}</span>
       <input type="search" id="adminTeachersSearch" class="input-field" placeholder="${escapeHtml(t('adminTeachers.searchPlaceholder'))}" />
     </label>
@@ -44,10 +53,10 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
   function visibleTeachers() {
     const q = search.trim().toLowerCase();
     if (!q) return teachers;
-    return teachers.filter((t) => {
-      const name = String(t.teacher_name || '').toLowerCase();
-      const user = String(t.username || '').toLowerCase();
-      const classes = String(t.assigned_classes || '').toLowerCase();
+    return teachers.filter((row) => {
+      const name = String(row.teacher_name || '').toLowerCase();
+      const user = String(row.username || '').toLowerCase();
+      const classes = String(row.assigned_classes || '').toLowerCase();
       return name.includes(q) || user.includes(q) || classes.includes(q);
     });
   }
@@ -67,21 +76,16 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
       .map((teacher) => {
         const username = String(teacher.username || '').trim();
         const inactive = teacher.active === false;
-        const mustChange = Boolean(teacher.mustChangePin);
+        const role = String(teacher.role || '').toLowerCase();
+        const isAdminRole = teacher.isAdmin || role === 'admin';
+        const isPastoralRole = role === 'pastoral' || teacher.isPastoral;
         return `<article class="admin-teacher-card glass-card ${inactive ? 'admin-teacher-card--inactive' : ''}" data-username="${escapeHtml(username)}">
         <div class="admin-teacher-card__head">
           <h3 class="admin-teacher-card__name">${escapeHtml(teacher.teacher_name || '—')}</h3>
           <div class="admin-teacher-card__badges">
-          ${
-            mustChange
-              ? `<span class="admin-teacher-card__badge">${escapeHtml(t('adminTeachers.mustChange'))}</span>`
-              : ''
-          }
-          ${
-            inactive
-              ? `<span class="admin-teacher-card__badge admin-teacher-card__badge--off">${escapeHtml(t('adminTeachers.inactive'))}</span>`
-              : ''
-          }
+          ${isAdminRole ? `<span class="admin-teacher-card__badge">${escapeHtml(t('adminTeachers.roleAdmin'))}</span>` : ''}
+          ${isPastoralRole ? `<span class="admin-teacher-card__badge admin-teacher-card__badge--pastoral">${escapeHtml(t('adminTeachers.rolePastoral'))}</span>` : ''}
+          ${inactive ? `<span class="admin-teacher-card__badge admin-teacher-card__badge--off">${escapeHtml(t('adminTeachers.inactive'))}</span>` : ''}
           </div>
         </div>
         <dl class="admin-teacher-card__details">
@@ -94,114 +98,140 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
             <dd>${escapeHtml(teacher.assigned_classes || '—')}</dd>
           </div>
         </dl>
-        <button type="button" class="button-secondary admin-teacher-reset" data-username="${escapeHtml(username)}" data-name="${escapeHtml(teacher.teacher_name || '')}" ${!username || inactive ? 'disabled' : ''}>
-          ${escapeHtml(t('adminTeachers.resetBtn'))}
-        </button>
+        <div class="admin-teacher-card__actions history-card__actions--compact">
+          <button type="button" class="button-secondary button-secondary--sm admin-teacher-edit" data-username="${escapeHtml(username)}" ${!username ? 'disabled' : ''}>${escapeHtml(t('admin.edit'))}</button>
+          ${
+            inactive
+              ? `<button type="button" class="button-secondary button-secondary--sm admin-teacher-activate" data-username="${escapeHtml(username)}" ${!username ? 'disabled' : ''}>${escapeHtml(t('adminTeachers.activate'))}</button>`
+              : `<button type="button" class="button-secondary button-secondary--sm admin-teacher-deactivate" data-username="${escapeHtml(username)}" data-name="${escapeHtml(teacher.teacher_name || '')}" ${!username ? 'disabled' : ''}>${escapeHtml(t('adminTeachers.deactivate'))}</button>`
+          }
+        </div>
       </article>`;
       })
       .join('');
   }
 
-  function openResetModal(targetUsername, teacherName) {
+  /**
+   * @param {'create'|'edit'} mode
+   * @param {object|null} teacher
+   */
+  function openTeacherModal(mode, teacher = null) {
     const root = document.createElement('div');
     root.className = 'modal-backdrop confirm-modal-backdrop';
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
-
+    const isEdit = mode === 'edit';
     const sheet = document.createElement('div');
-    sheet.className = 'modal-sheet glass-card confirm-modal admin-reset-modal';
+    sheet.className = 'modal-sheet glass-card confirm-modal admin-form-modal';
     sheet.innerHTML = `
-      <h2 class="confirm-modal__title">${escapeHtml(t('adminTeachers.resetTitle'))}</h2>
-      <p class="confirm-modal__message">${escapeHtml(t('adminTeachers.resetMessage', { name: teacherName, username: targetUsername }))}</p>
-      <form id="adminResetForm" class="admin-reset-form">
+      <h2 class="confirm-modal__title">${escapeHtml(isEdit ? t('adminTeachers.editTitle') : t('adminTeachers.addTitle'))}</h2>
+      <form id="adminTeacherForm" class="admin-form">
         <label class="field">
-          <span>${escapeHtml(t('adminTeachers.adminPin'))}</span>
-          <input type="password" id="adminResetAdminPin" class="input-field" inputmode="numeric" maxlength="12" autocomplete="current-password" required />
+          <span>${escapeHtml(t('adminTeachers.teacherName'))}</span>
+          <input type="text" id="tcName" class="input-field" required value="${escapeHtml(teacher?.teacher_name || '')}" />
         </label>
         <label class="field">
-          <span>${escapeHtml(t('adminTeachers.tempPin'))}</span>
-          <input type="password" id="adminResetTempPin" class="input-field" inputmode="numeric" maxlength="12" placeholder="${escapeHtml(t('adminTeachers.tempPinPlaceholder'))}" />
-          <p class="field-hint">${escapeHtml(t('adminTeachers.tempPinHint'))}</p>
+          <span>${escapeHtml(t('adminTeachers.username'))}</span>
+          <input type="text" id="tcUsername" class="input-field" required ${isEdit ? 'readonly' : ''} value="${escapeHtml(teacher?.username || '')}" autocomplete="off" />
         </label>
+        <label class="field">
+          <span>${escapeHtml(t('adminTeachers.classes'))}</span>
+          <input type="text" id="tcClasses" class="input-field" required value="${escapeHtml(teacher?.assigned_classes || '')}" placeholder="${escapeHtml(t('adminTeachers.classesPh'))}" />
+          <p class="field-hint">${escapeHtml(t('adminTeachers.classesHint'))}</p>
+        </label>
+        <label class="field">
+          <span>${escapeHtml(t('adminTeachers.role'))}</span>
+          <select id="tcRole" class="select-field">
+            <option value="teacher" ${teacher?.role !== 'admin' && teacher?.role !== 'pastoral' ? 'selected' : ''}>${escapeHtml(t('adminTeachers.roleTeacher'))}</option>
+            <option value="pastoral" ${teacher?.role === 'pastoral' ? 'selected' : ''}>${escapeHtml(t('adminTeachers.rolePastoral'))}</option>
+            <option value="admin" ${teacher?.role === 'admin' || teacher?.isAdmin ? 'selected' : ''}>${escapeHtml(t('adminTeachers.roleAdmin'))}</option>
+          </select>
+        </label>
+        ${renderAdminPinField()}
         <div class="modal-actions confirm-modal__actions">
-          <button type="button" class="button-secondary" id="adminResetCancel">${escapeHtml(t('common.cancel'))}</button>
-          <button type="submit" class="button-primary" id="adminResetSubmit">${escapeHtml(t('adminTeachers.resetConfirm'))}</button>
+          <button type="button" class="button-secondary" id="adminTeacherCancel">${escapeHtml(t('common.cancel'))}</button>
+          <button type="submit" class="button-primary">${escapeHtml(t('common.save'))}</button>
         </div>
       </form>`;
-
     root.appendChild(sheet);
     document.body.appendChild(root);
-
     const close = () => root.remove();
-
-    root.querySelector('#adminResetCancel')?.addEventListener('click', close);
+    root.querySelector('#adminTeacherCancel')?.addEventListener('click', close);
     root.addEventListener('click', (e) => {
       if (e.target === root) close();
     });
-
-    root.querySelector('#adminResetForm')?.addEventListener('submit', async (e) => {
+    root.querySelector('#adminTeacherForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const adminPin = /** @type {HTMLInputElement|null} */ (root.querySelector('#adminResetAdminPin'))?.value?.trim() || '';
-      const newPin = /** @type {HTMLInputElement|null} */ (root.querySelector('#adminResetTempPin'))?.value?.trim() || '';
-      const submitBtn = root.querySelector('#adminResetSubmit');
+      const adminPin = readAdminPin(root);
+      const payload = {
+        adminPin,
+        teacher_name: /** @type {HTMLInputElement} */ (root.querySelector('#tcName')).value.trim(),
+        username: /** @type {HTMLInputElement} */ (root.querySelector('#tcUsername')).value.trim().toLowerCase(),
+        assigned_classes: /** @type {HTMLInputElement} */ (root.querySelector('#tcClasses')).value.trim(),
+        role: /** @type {HTMLSelectElement} */ (root.querySelector('#tcRole')).value
+      };
+      const submitBtn = root.querySelector('button[type="submit"]');
       if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = true;
       try {
-        const result = await adminResetTeacherPin(session, {
-          adminPin,
-          targetUsername,
-          newPin
-        });
+        if (isEdit) {
+          await adminUpdateTeacher(session, payload);
+          onToast?.(t('adminTeachers.saved'));
+        } else {
+          await adminCreateTeacher(session, payload);
+          onToast?.(t('adminTeachers.created'));
+        }
         close();
-        openResultModal(result);
         void load();
       } catch (err) {
-        onToast?.(err instanceof Error ? err.message : t('adminTeachers.resetFailed'));
+        onToast?.(err instanceof Error ? err.message : t('admin.saveFailed'));
       } finally {
         if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = false;
       }
     });
-
-    root.querySelector('#adminResetAdminPin')?.focus();
   }
 
-  /**
-   * @param {{ username: string, teacherName: string, tempPin: string }} result
-   */
-  function openResultModal(result) {
+  function openDeactivateModal(username, teacherName, activate = false) {
     const root = document.createElement('div');
     root.className = 'modal-backdrop confirm-modal-backdrop';
-    root.setAttribute('role', 'dialog');
-    root.setAttribute('aria-modal', 'true');
-
     const sheet = document.createElement('div');
-    sheet.className = 'modal-sheet glass-card confirm-modal admin-reset-result';
+    sheet.className = 'modal-sheet glass-card confirm-modal admin-form-modal';
     sheet.innerHTML = `
-      <h2 class="confirm-modal__title">${escapeHtml(t('adminTeachers.resultTitle'))}</h2>
-      <dl class="admin-reset-result__box">
-        <div class="admin-teacher-card__row">
-          <dt>${escapeHtml(t('adminTeachers.resultName'))}</dt>
-          <dd><strong>${escapeHtml(result.teacherName || '—')}</strong></dd>
+      <h2 class="confirm-modal__title">${escapeHtml(activate ? t('adminTeachers.activateTitle') : t('adminTeachers.deactivateTitle'))}</h2>
+      <p class="confirm-modal__message">${escapeHtml(activate ? t('adminTeachers.activateMessage', { name: teacherName }) : t('adminTeachers.deactivateMessage', { name: teacherName }))}</p>
+      <form id="adminDeactivateForm" class="admin-form">
+        ${renderAdminPinField({ id: 'adminDeactivatePin' })}
+        <div class="modal-actions confirm-modal__actions">
+          <button type="button" class="button-secondary" id="adminDeactivateCancel">${escapeHtml(t('common.cancel'))}</button>
+          <button type="submit" class="button-primary">${escapeHtml(t('common.confirm'))}</button>
         </div>
-        <div class="admin-teacher-card__row">
-          <dt>${escapeHtml(t('adminTeachers.username'))}</dt>
-          <dd><strong>${escapeHtml(result.username)}</strong></dd>
-        </div>
-        <div class="admin-teacher-card__row">
-          <dt>${escapeHtml(t('adminTeachers.resultPin'))}</dt>
-          <dd><strong class="admin-reset-result__pin">${escapeHtml(result.tempPin)}</strong></dd>
-        </div>
-      </dl>
-      <p class="confirm-modal__message">${escapeHtml(t('adminTeachers.resultHint'))}</p>
-      <div class="modal-actions confirm-modal__actions">
-        <button type="button" class="button-primary" id="adminResetResultOk">${escapeHtml(t('common.confirm'))}</button>
-      </div>`;
-
+      </form>`;
     root.appendChild(sheet);
     document.body.appendChild(root);
     const close = () => root.remove();
-    root.querySelector('#adminResetResultOk')?.addEventListener('click', close);
+    root.querySelector('#adminDeactivateCancel')?.addEventListener('click', close);
     root.addEventListener('click', (e) => {
       if (e.target === root) close();
+    });
+    root.querySelector('#adminDeactivateForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const submitBtn = root.querySelector('button[type="submit"]');
+      if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = true;
+      try {
+        const adminPin = readAdminPin(root, 'adminDeactivatePin');
+        if (activate) {
+          await adminUpdateTeacher(session, { adminPin, username, active: true });
+          onToast?.(t('adminTeachers.activated'));
+        } else {
+          await adminDeactivateTeacher(session, { adminPin, username });
+          onToast?.(t('adminTeachers.deactivated'));
+        }
+        close();
+        void load();
+      } catch (err) {
+        onToast?.(err instanceof Error ? err.message : t('admin.saveFailed'));
+      } finally {
+        if (submitBtn instanceof HTMLButtonElement) submitBtn.disabled = false;
+      }
     });
   }
 
@@ -209,9 +239,9 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
     if (listEl) listEl.innerHTML = renderLoading(t('adminTeachers.loading'));
     try {
       teachers = await fetchTeachers();
-      teachers = teachers
-        .filter((t) => String(t.username || '').trim())
-        .sort((a, b) => String(a.teacher_name || '').localeCompare(String(b.teacher_name || ''), 'th'));
+      teachers = teachers.sort((a, b) =>
+        String(a.teacher_name || '').localeCompare(String(b.teacher_name || ''), 'th')
+      );
       renderList();
     } catch (err) {
       if (listEl) {
@@ -220,13 +250,28 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
     }
   }
 
+  container.querySelector('#adminTeacherAdd')?.addEventListener('click', () => {
+    openTeacherModal('create');
+  });
+
   listEl?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.admin-teacher-reset');
-    if (!btn || btn.disabled) return;
-    const username = btn.getAttribute('data-username') || '';
-    const name = btn.getAttribute('data-name') || '';
-    if (!username) return;
-    openResetModal(username, name);
+    const editBtn = e.target.closest('.admin-teacher-edit');
+    if (editBtn) {
+      const username = editBtn.getAttribute('data-username') || '';
+      const teacher = teachers.find((t) => t.username === username);
+      if (teacher) openTeacherModal('edit', teacher);
+      return;
+    }
+    const deactBtn = e.target.closest('.admin-teacher-deactivate');
+    if (deactBtn && !deactBtn.disabled) {
+      openDeactivateModal(deactBtn.getAttribute('data-username') || '', deactBtn.getAttribute('data-name') || '', false);
+      return;
+    }
+    const actBtn = e.target.closest('.admin-teacher-activate');
+    if (actBtn && !actBtn.disabled) {
+      const teacher = teachers.find((t) => t.username === actBtn.getAttribute('data-username'));
+      openDeactivateModal(actBtn.getAttribute('data-username') || '', teacher?.teacher_name || '', true);
+    }
   });
 
   searchInput?.addEventListener('input', () => {

@@ -15,6 +15,9 @@ npm-debug.log*
 !.env.example
 functions/.env
 
+# Manual PDF build output (optional commit)
+# docs/screenshots/
+
 # Firebase local
 .firebase/
 firebase-debug.log
