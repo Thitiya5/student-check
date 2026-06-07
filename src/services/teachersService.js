@@ -126,7 +126,7 @@ export function normalizeTeacherRow(raw) {
 }
 
 /**
- * Whether the login form should show PIN (admin accounts only).
+ * Whether the login form should show PIN (admin and pastoral accounts).
  * @param {string} teacherNameInput
  * @returns {Promise<{ found: boolean, requiresPin: boolean, ambiguous?: boolean }>}
  */
@@ -136,13 +136,34 @@ export async function checkTeacherRequiresPin(teacherNameInput) {
 
   try {
     const out = await teacherRequiresPinGas(input);
-    return {
-      found: Boolean(out?.found),
-      requiresPin: Boolean(out?.requiresPin) || Boolean(out?.ambiguous),
-      ambiguous: Boolean(out?.ambiguous)
-    };
+    if (out?.found) {
+      return {
+        found: true,
+        requiresPin: Boolean(out?.requiresPin) || Boolean(out?.ambiguous),
+        ambiguous: Boolean(out?.ambiguous)
+      };
+    }
   } catch (err) {
     console.warn('[teachers] teacherRequiresPin failed:', err);
+  }
+
+  try {
+    const teachers = await fetchTeachers();
+    const candidates = findTeacherCandidates(teachers, input);
+    if (!candidates.length) return { found: false, requiresPin: false };
+    const top = candidates[0];
+    const second = candidates[1];
+    if (second && top.score === second.score && top.score < 100) {
+      return { found: true, requiresPin: true, ambiguous: true };
+    }
+    const match = top.t;
+    return {
+      found: true,
+      requiresPin: Boolean(match.isAdmin || match.isPastoral),
+      ambiguous: false
+    };
+  } catch (err) {
+    console.warn('[teachers] checkTeacherRequiresPin fallback failed:', err);
     return { found: false, requiresPin: false };
   }
 }
@@ -173,7 +194,7 @@ function sessionFromTeacherRow(match) {
 }
 
 /**
- * Login — ครูใช้ชื่ออย่างเดียว / ผู้ดูแลระบบต้องกรอก PIN
+ * Login — ครูใช้ชื่ออย่างเดียว / แอดมินและครูปกครองต้องกรอก PIN
  * @param {string} loginInput
  * @param {string} [pinInput]
  */
@@ -231,6 +252,30 @@ export async function resolveTeacherLogin(loginInput, pinInput = '') {
     const verified = normalizeTeacherRow(out?.teacher ?? match);
     const session = sessionFromTeacherRow(verified);
     console.log('[teachers] admin login OK:', session.teacherName);
+    saveTeacherAuthSession(session);
+    return session;
+  }
+
+  if (match.isPastoral) {
+    const pin = String(pinInput ?? '').trim();
+    if (!pin) throw new Error('กรุณากรอก PIN ครูปกครอง');
+
+    let out;
+    try {
+      out = await verifyPastoralPinByNameGas(match.teacher_name, pin);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('Unknown action')) {
+        throw new Error(
+          'เซิร์ฟเวอร์ยังไม่รองรับ verifyPastoralPinByName — Deploy Web App จาก Code.gs ล่าสุด'
+        );
+      }
+      throw err instanceof Error ? err : new Error(message);
+    }
+
+    const verified = normalizeTeacherRow(out?.teacher ?? match);
+    const session = sessionFromTeacherRow(verified);
+    console.log('[teachers] pastoral login OK:', session.teacherName);
     saveTeacherAuthSession(session);
     return session;
   }

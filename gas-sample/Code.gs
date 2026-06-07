@@ -327,13 +327,13 @@ function teacherIsPastoral_(match) {
   return String(match.role || match.ROLE || '').toLowerCase() === 'pastoral';
 }
 
-/** True when login UI must collect PIN — admin accounts only. */
+/** True when login UI must collect PIN — admin and pastoral accounts. */
 function teacherLoginRequiresPin_(match) {
-  return teacherIsAdmin_(match);
+  return teacherIsAdmin_(match) || teacherIsPastoral_(match);
 }
 
 /**
- * Whether login should show PIN field (admin only; does not expose PIN value).
+ * Whether login should show PIN field (admin/pastoral; does not expose PIN value).
  * @param {string} nameInput
  */
 function teacherRequiresPin_(nameInput) {
@@ -347,7 +347,7 @@ function teacherRequiresPin_(nameInput) {
   }
   return ok_({
     found: true,
-    requiresPin: teacherIsAdmin_(matches[0]),
+    requiresPin: teacherLoginRequiresPin_(matches[0]),
     ambiguous: false
   });
 }
