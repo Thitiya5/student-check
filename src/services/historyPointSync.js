@@ -2,9 +2,10 @@ import { getAttendanceForClassOnDate } from './attendanceService.js';
 import { fetchStudentsByClass } from './studentsService.js';
 import {
   disciplineEntryToFirestore,
+  emptyDisciplineEntry,
   parseDisciplineFromRecord
 } from '../data/disciplineChecks.js';
-import { normalizeAttendanceStatus, CHECK_DEFAULT_STATUS } from '../data/attendanceStatuses.js';
+import { normalizeAttendanceStatus } from '../data/attendanceStatuses.js';
 import { enrichStudentsForPointSync, syncClassPointTransactions } from './studentPointsService.js';
 import { classKeyToParts } from './teacherAuth.js';
 import { initAppSettings } from './appSettingsService.js';
@@ -28,16 +29,30 @@ export async function resyncPointsForClassDay(opts) {
     students.map((s) => {
       const sid = String(s.student_id);
       const rec = recordMap.get(sid);
-      const status = normalizeAttendanceStatus(rec?.status || CHECK_DEFAULT_STATUS);
-      const parsed = parseDisciplineFromRecord(rec || {});
+      const student_name = `${String(s.first_name ?? '').trim()} ${String(s.last_name ?? '').trim()}`.trim();
+      /** No attendance row — treat as unchecked (present, no deductions) after history delete. */
+      if (!rec) {
+        return {
+          student_id: sid,
+          first_name: String(s.first_name ?? ''),
+          last_name: String(s.last_name ?? ''),
+          student_name,
+          status: 'present',
+          disciplineReturnedBy: '',
+          disciplineReturnedAt: null,
+          ...disciplineEntryToFirestore(emptyDisciplineEntry())
+        };
+      }
+      const status = normalizeAttendanceStatus(rec.status);
+      const parsed = parseDisciplineFromRecord(rec);
       return {
         student_id: sid,
         first_name: String(s.first_name ?? ''),
         last_name: String(s.last_name ?? ''),
-        student_name: `${String(s.first_name ?? '').trim()} ${String(s.last_name ?? '').trim()}`.trim(),
+        student_name,
         status,
-        disciplineReturnedBy: rec?.disciplineReturnedBy || '',
-        disciplineReturnedAt: rec?.disciplineReturnedAt || null,
+        disciplineReturnedBy: rec.disciplineReturnedBy || '',
+        disciplineReturnedAt: rec.disciplineReturnedAt || null,
         ...disciplineEntryToFirestore(parsed)
       };
     }),

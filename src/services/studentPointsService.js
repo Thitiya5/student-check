@@ -490,6 +490,14 @@ export async function syncClassPointTransactions(payload) {
     }
   }
 
+  const payloadStudentIds = new Set(students.map((s) => String(s.student_id)));
+  for (const [sid, oldRows] of byStudent) {
+    if (payloadStudentIds.has(sid)) continue;
+    for (const old of oldRows) {
+      ops.push({ ref: doc(db, COLLECTION, old.id), delete: true });
+    }
+  }
+
   for (let i = 0; i < ops.length; i += BATCH_LIMIT) {
     const batch = writeBatch(db);
     const chunk = ops.slice(i, i + BATCH_LIMIT);
