@@ -1,8 +1,9 @@
 # คู่มือผู้ดูแลระบบ — ระบบเช็คชื่อนักเรียน
 
-**โรงเรียนยางตลาดวิทยาคาร · Student Check**  
+**โรงเรียนยางตลาดวิทยาคาร · Student Check v3.1.0**  
 **Firebase Project:** `famous-augury-495905-c3`  
-**Hosting Site:** `student-check-th` → https://student-check-th.web.app
+**Hosting Site:** `student-check-th` → https://student-check-th.web.app  
+**อัปเดตเอกสาร:** มิถุนายน 2569
 
 ---
 
@@ -259,6 +260,7 @@ Admin ใช้หน้า **รายงาน** พร้อมสิทธ�
 - กรอง **ชื่อครู**
 - ดูทุก LEVEL/ROOM
 - ช่วงวันที่ยาวโดยไม่เลือกห้อง — จำกัด **35 วัน** (ถ้าเกินต้องเลือกห้องก่อน)
+- **ส่งออก PDF** ปุ่มเดียว: รายวันไม่เลือกห้อง = สรุปทั้งโรงเรียน · รายเดือนเลือกห้อง = ตารางรายเดือน (แนวนอน)
 
 ---
 
@@ -401,7 +403,7 @@ Firebase Console → Hosting → site `student-check-th` → **Release history**
 ```powershell
 git add .
 git commit -m "คำอธิบายการเปลี่ยนแปลง"
-git tag -a v2.0.1 -m "ก่อน deploy production"
+git tag -a v3.1.0 -m "Release v3.1.0"
 npx firebase deploy --only hosting:app
 ```
 
