@@ -55,6 +55,23 @@ export function weekRangeContaining(dateKey = getTodayDate()) {
   return { from: formatDateInBangkok(monday), to: formatDateInBangkok(sunday) };
 }
 
+/** @param {string} dateKey yyyy-MM-dd — weekday in Asia/Bangkok (0=Sun … 6=Sat) */
+export function getWeekdayInBangkok(dateKey) {
+  return new Date(`${String(dateKey)}T12:00:00`).getDay();
+}
+
+/** Saturday or Sunday (Bangkok). */
+export function isWeekendDate(dateKey) {
+  const dow = getWeekdayInBangkok(String(dateKey || ''));
+  return dow === 0 || dow === 6;
+}
+
+/** Monday–Friday school days. */
+export function isSchoolDay(dateKey) {
+  const dow = getWeekdayInBangkok(String(dateKey || ''));
+  return dow >= 1 && dow <= 5;
+}
+
 /** @param {string} from yyyy-MM-dd @param {string} to yyyy-MM-dd */
 export function enumerateDateKeys(from, to) {
   const out = [];

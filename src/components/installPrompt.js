@@ -115,7 +115,7 @@ export async function handleInstallAction(onToast) {
 export function bindSettingsInstall(container, onToast) {
   const btn = container.querySelector('#settingsInstallApp');
   const hint = container.querySelector('#settingsInstallHint');
-  if (!btn || !hint) return () => {};
+  if (!btn) return () => {};
 
   function refresh() {
     const state = getInstallUIState();
@@ -124,13 +124,14 @@ export function bindSettingsInstall(container, onToast) {
     if (state === 'installed') {
       btn.disabled = true;
       btn.textContent = t('pwa.installed');
-      hint.textContent = t('pwa.installedHint');
+      if (hint) hint.textContent = t('pwa.installedHint');
       return;
     }
 
     btn.disabled = false;
     btn.textContent = state === 'ready' ? t('pwa.install') : t('pwa.howToInstall');
 
+    if (!hint) return;
     if (state === 'ready') {
       hint.textContent = t('pwa.installHintShort');
     } else if (state === 'ios') {

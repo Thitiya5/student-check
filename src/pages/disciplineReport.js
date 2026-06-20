@@ -56,7 +56,7 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
   container.classList.add('discipline-report-page');
   container.innerHTML = `${renderPageHeader({
     title: t('disciplineReport.title'),
-    subtitle: t('disciplineReport.subtitle'),
+    subtitle: '',
     topAction: 'back'
   })}
   <section class="reports-toolbar glass-card disc-report-toolbar">
@@ -149,7 +149,7 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
 
   function renderOverviewHtml() {
     if (!overview?.inspectionDates?.length) {
-      return renderEmpty(t('disciplineReport.noInspectionDate'), t('disciplineReport.noInspectionDateHint'));
+      return renderEmpty(t('disciplineReport.noInspectionDate'));
     }
     return `${renderSummaryCards()}${renderClassGrid()}`;
   }

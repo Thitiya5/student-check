@@ -114,7 +114,7 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
 
   container.innerHTML = `${renderPageHeader({
     title: t('pointsReport.title'),
-    subtitle: viewOnly ? t('pointsReport.viewOnlyHint') : '',
+    subtitle: '',
     topAction: 'back'
   })}
   <section class="segmented report-tabs points-report-tabs">
@@ -182,7 +182,6 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
       </label>
     </div>
   </section>
-  <p class="points-report-behavior-hint" id="ptsBehaviorHint" hidden>${escapeHtml(t('pointsReport.behaviorTabHint'))}</p>
   <section id="pointsReportContent">${renderLoading()}</section>`;
 
   bindPageHeaderActions(container, {
@@ -202,7 +201,6 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
   const deductOnly = container.querySelector('#ptsDeductOnly');
   const categoryWrap = container.querySelector('#ptsCategoryWrap');
   const deductWrap = container.querySelector('#ptsDeductWrap');
-  const behaviorHint = container.querySelector('#ptsBehaviorHint');
   const classBlock = container.querySelector('#ptsClassBlock');
   const searchWrap = container.querySelector('#ptsSearchWrap');
   const filterMoreBlock = container.querySelector('.points-report-toolbar__more')?.closest('.reports-toolbar__block');
@@ -222,7 +220,6 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
     if (deductWrap) deductWrap.hidden = isBehavior;
     if (classBlock) classBlock.hidden = isBehavior;
     if (searchWrap) searchWrap.hidden = isBehavior;
-    if (behaviorHint) behaviorHint.hidden = !isBehavior;
     if (filterMoreBlock) {
       const titleEl = filterMoreBlock.querySelector('.reports-toolbar__block-title');
       if (titleEl) titleEl.hidden = isBehavior;
@@ -255,7 +252,7 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
         </button>`;
       })
       .join('');
-    content.innerHTML = `<p class="points-ledger-summary">${escapeHtml(t('pointsReport.drillHint'))}</p><div class="points-class-grid">${cards}</div>`;
+    content.innerHTML = `<div class="points-class-grid">${cards}</div>`;
     content.querySelectorAll('[data-class]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const classKey = btn.getAttribute('data-class') || '';
@@ -627,10 +624,7 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
       });
 
     if (!behaviorRows.length) {
-      content.innerHTML = renderEmpty(
-        t('pointsReport.behaviorEmpty'),
-        t('pointsReport.behaviorEmptyHint')
-      );
+      content.innerHTML = renderEmpty(t('pointsReport.behaviorEmpty'));
       return;
     }
 

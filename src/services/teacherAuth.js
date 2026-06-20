@@ -342,6 +342,52 @@ export function getViewClassKeys(session) {
 }
 
 /**
+ * Daily school-wide PDF (type A) — admin only.
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null|undefined} session
+ */
+export function canExportDailySchoolPdf(session) {
+  return isAdminSession(session);
+}
+
+/**
+ * Daily class roster PDF (type B) — homeroom teacher for own class; admin any class.
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null|undefined} session
+ * @param {string} classKey
+ */
+export function canExportDailyClassPdf(session, classKey) {
+  if (!session || !classKey) return false;
+  if (isAdminSession(session)) return true;
+  if (isSchoolWideViewSession(session)) return false;
+  return getHomeroomClassKeys(session).some((k) => classKeysMatch(k, classKey));
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null|undefined} session
+ * @param {'daily'|'weekly'|'monthly'|'semester'} mode
+ * @param {string} classKey
+ * @returns {{ ok: boolean, dailyLayout?: 'school'|'class'|'default', pdfKind?: 'monthlyMatrix', messageKey?: string }}
+ */
+export function resolveReportPdfExport(session, mode, classKey) {
+  if (mode === 'daily') {
+    if (!classKey) {
+      if (canExportDailySchoolPdf(session)) return { ok: true, dailyLayout: 'school' };
+      return { ok: false, messageKey: 'pdf.dailySchoolAdminOnly' };
+    }
+    if (canExportDailyClassPdf(session, classKey)) return { ok: true, dailyLayout: 'class' };
+    return { ok: false, messageKey: 'pdf.dailyClassHomeroomOnly' };
+  }
+  if (mode === 'monthly') {
+    if (!classKey) return { ok: false, messageKey: 'pdf.matrixPickClass' };
+    if (!canAccessClass(session, classKey)) return { ok: false, messageKey: 'admin.denied' };
+    return { ok: true, pdfKind: 'monthlyMatrix' };
+  }
+  if (isSchoolWideViewSession(session)) return { ok: true, dailyLayout: 'default' };
+  if (!classKey) return { ok: false, messageKey: 'pdf.pickClassForExport' };
+  if (canExportDailyClassPdf(session, classKey)) return { ok: true, dailyLayout: 'default' };
+  return { ok: false, messageKey: 'pdf.exportDenied' };
+}
+
+/**
  * Homeroom / assigned classes (excludes ALL sentinel).
  * @param {TeacherAuthSession|null|undefined} session
  * @returns {string[]}

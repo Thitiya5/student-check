@@ -201,7 +201,7 @@ function renderScoresSectionHtml(byClassDeducted, today, opts, activeTab = null)
 
   const panel = activeTab
     ? renderScoresPanelContent(activeTab, byClassDeducted, today, csThreshold)
-    : `<p class="dash-scores-panel-hint">${escapeHtml(t('dashboard.scoresTabHint'))}</p>`;
+    : '';
 
   return `<div class="dash-scores-hub" data-scores-hub="1">
     ${renderScoresTabs(activeTab, counts)}
@@ -269,7 +269,6 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       showScoresSection
         ? `<section class="dash-section" id="dashboardScoresSection">
       <h2 class="dash-section__title">${escapeHtml(t('dashboard.scoresTitle'))}</h2>
-      <p class="dash-section__hint">${escapeHtml(t('dashboard.scoresTabHintShort'))}</p>
       <div id="dashboardScores" class="dash-score-panel">${renderLoading(t('dashboard.scoresLoading'))}</div>
     </section>`
         : ''
@@ -485,7 +484,6 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       if (csTotal > 0) {
         cards.push(`<article class="dash-alert dash-alert--warn glass-card">
           <strong>${escapeHtml(t('dashboard.communityServiceAlert', { count: csTotal }))}</strong>
-          <p class="dash-alert__hint">${escapeHtml(t('dashboard.communityServiceAlertHint'))}</p>
           <button type="button" class="button-secondary button-secondary--sm dash-alert__btn" data-scores-tab="service">${escapeHtml(t('dashboard.viewCommunityService'))}</button>
         </article>`);
       }

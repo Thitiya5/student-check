@@ -21,11 +21,9 @@ import { isInspectionDayCached } from '../services/inspectionScheduleService.js'
 import { getTodayDate } from '../utils/dateIso.js';
 import {
   canRecordDisciplineOnDate,
-  getAppSettings,
   getDisciplineDeductionRuleIds,
   initAppSettings,
-  isDisciplineScoringEnabled,
-  listUpcomingInspectionDates
+  isDisciplineScoringEnabled
 } from '../services/appSettingsService.js';
 import { isAdminSession, loadTeacherAuthSession } from '../services/teacherAuth.js';
 import { getHashQuery } from '../services/navigation.js';
@@ -65,7 +63,7 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
     </div>
     <button type="button" class="button-primary" id="inspLoadBtn">${escapeHtml(t('inspection.loadClass'))}</button>
   </section>
-  <section id="inspBody">${renderEmpty(t('inspection.pickClass'), t('inspection.pickClassHint'))}</section>`;
+  <section id="inspBody">${renderEmpty(t('inspection.pickClass'))}</section>`;
 
   bindPageHeaderActions(container, {
     onBack: () => onBack?.('/admin'),
@@ -134,12 +132,6 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
     }
 
     return next;
-  }
-
-  function inspectionHintText() {
-    const upcoming = listUpcomingInspectionDates(getAppSettings(), 6).slice(0, 6);
-    if (!upcoming.length) return t('inspection.notScheduledHint');
-    return t('inspection.notScheduledHintDates', { dates: upcoming.join(', ') });
   }
 
   function renderList() {
@@ -215,7 +207,7 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
     const canResync = canRecordDisciplineOnDate(dateKey) && scoringOn;
 
     if (!scheduled && !canResync) {
-      body.innerHTML = renderEmpty(t('inspection.notScheduled'), inspectionHintText());
+      body.innerHTML = renderEmpty(t('inspection.notScheduled'));
       return;
     }
 
@@ -326,7 +318,7 @@ export function renderInspectionPage(container, { state = {}, onToast, onLogout,
   levelSel?.addEventListener('change', () => void loadRooms(levelSel.value));
   dateInput?.addEventListener('change', () => {
     loaded = false;
-    body.innerHTML = renderEmpty(t('inspection.pickClass'), t('inspection.pickClassHint'));
+    body.innerHTML = renderEmpty(t('inspection.pickClass'));
   });
   container.querySelector('#inspLoadBtn')?.addEventListener('click', () => void openClass());
 

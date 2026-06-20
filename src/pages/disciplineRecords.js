@@ -90,10 +90,7 @@ export function renderDisciplineRecordsPage(container, { state = {}, onNavigate,
 
   if (!isDisciplineScoringEnabled()) {
     if (historyBody) {
-      historyBody.innerHTML = renderEmpty(
-        t('behavior.scoringDisabled'),
-        t('behavior.scoringDisabledHint')
-      );
+      historyBody.innerHTML = renderEmpty(t('behavior.scoringDisabled'));
     }
     return;
   }

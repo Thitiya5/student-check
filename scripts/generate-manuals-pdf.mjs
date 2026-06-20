@@ -15,7 +15,7 @@ const SCREENSHOT_DIR = path.join(ROOT, 'docs', 'screenshots');
 const LOGO_URL = 'https://student-check-th.web.app/assets/school-logo.png';
 
 const SCHOOL = 'โรงเรียนยางตลาดวิทยาคาร';
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '3.1.0';
 const DOC_DATE = new Intl.DateTimeFormat('th-TH', {
   day: 'numeric',
   month: 'long',

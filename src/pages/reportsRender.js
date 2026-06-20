@@ -177,7 +177,7 @@ function renderDailyRosterCompact(rows, classKey) {
   const unique = sortDailyRows(dedupeDailyRows(rows));
   if (!unique.length) {
     return `<section class="glass-card report-roster-card">
-      <p class="reports-students__hint">${escapeHtml(t('reports.noRecordsDay'))}</p>
+      <p class="ui-empty__title">${escapeHtml(t('reports.noRecordsDay'))}</p>
     </section>`;
   }
 
@@ -220,7 +220,7 @@ function renderDailyClassOverview(rows, levelFilter = '') {
 
   if (!entries.length) {
     return `<section class="glass-card report-roster-card">
-      <p class="reports-students__hint">${escapeHtml(t('reports.noRecordsDay'))}</p>
+      <p class="ui-empty__title">${escapeHtml(t('reports.noRecordsDay'))}</p>
     </section>`;
   }
 
@@ -254,7 +254,7 @@ export function renderIndividualSection(rows, mode) {
   if (!reports.length) {
     return `<section class="reports-students glass-card">
       <h3>${escapeHtml(t('reports.viewStudents'))}</h3>
-      <p class="reports-students__hint">${escapeHtml(t('history.empty'))}</p>
+      <p class="ui-empty__title">${escapeHtml(t('history.empty'))}</p>
     </section>`;
   }
   const list = reports

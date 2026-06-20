@@ -30,7 +30,8 @@ import {
   getAttendanceForClassOnDate,
   recordsToAttendanceMap,
   recordsToDisciplineMap,
-  saveClassAttendance
+  saveClassAttendance,
+  deleteAttendanceForClassOnDate
 } from '../services/attendanceService.js';
 import { cacheClassSession, getCachedClassSession } from '../services/offlineDb.js';
 import { isOnline } from '../services/offlineSync.js';
@@ -48,7 +49,7 @@ import {
   classKeyToParts,
   canAccessLevelRoom,
 } from '../services/teacherAuth.js';
-import { getTodayDate } from '../utils/dateIso.js';
+import { getTodayDate, isSchoolDay, isWeekendDate } from '../utils/dateIso.js';
 import { initAppSettings } from '../services/appSettingsService.js';
 import { formatDateWithDayThai } from '../components/datePicker.js';
 import { renderPageHeader, renderNavQuickLinks, bindPageHeaderActions } from '../components/pageHeader.js';
@@ -58,14 +59,23 @@ import {
   enrichStudentsForPointSync,
   syncClassPointTransactions
 } from '../services/studentPointsService.js';
+import { resyncPointsForClassDay } from '../services/historyPointSync.js';
+import { openConfirmModal } from '../components/confirmModal.js';
 
-function countStatuses(students, attendance) {
+function countStatuses(students, attendance, { weekendView = false } = {}) {
   const out = Object.fromEntries(ATTENDANCE_STATUS_KEYS.map((k) => [k, 0]));
+  let unchecked = 0;
   for (const s of students) {
-    const st = normalizeAttendanceStatus(attendance[s.student_id] || CHECK_DEFAULT_STATUS);
+    const sid = s.student_id;
+    const hasRecord = Object.prototype.hasOwnProperty.call(attendance, sid);
+    if (weekendView && !hasRecord) {
+      unchecked += 1;
+      continue;
+    }
+    const st = normalizeAttendanceStatus(attendance[sid] || CHECK_DEFAULT_STATUS);
     if (st in out) out[st] += 1;
   }
-  return out;
+  return { ...out, unchecked };
 }
 
 function buildFullMap(students, attendance) {
@@ -107,6 +117,8 @@ export function renderCheckPage(container, ctx = {}) {
   let discipline = {};
   /** @type {typeof discipline} */
   let baselineDiscipline = {};
+  let weekendHasSavedData = false;
+  let weekendSavedCount = 0;
 
   if (singleClass && !hasDeepClass) {
     const parts = classKeyToParts(singleClass);
@@ -169,6 +181,20 @@ export function renderCheckPage(container, ctx = {}) {
   const assignedSel = container.querySelector('#assignedClassSelect');
   const startBtn = container.querySelector('#startCheckBtn');
 
+  function getStartButtonLabel() {
+    return isSchoolDay(dateKey) ? t('check.start') : t('check.startView');
+  }
+
+  function updatePickerState() {
+    if (levelSel) level = levelSel.value || level;
+    if (roomSel) room = roomSel.value || room;
+    const ready = Boolean(level && room);
+    if (startBtn) {
+      startBtn.disabled = !ready;
+      startBtn.textContent = getStartButtonLabel();
+    }
+  }
+
   function updateHeaderDate() {
     if (headerSubtitle) {
       headerSubtitle.textContent = `${teacherName} · ${formatDateWithDayThai(dateKey)}`;
@@ -202,6 +228,7 @@ export function renderCheckPage(container, ctx = {}) {
           )
           .join('');
       if (level) await loadRooms(level);
+      updatePickerState();
       return;
     }
 
@@ -215,6 +242,7 @@ export function renderCheckPage(container, ctx = {}) {
           )
           .join('');
       if (startBtn) startBtn.disabled = !assignedSel.value;
+      updatePickerState();
     }
   }
 
@@ -230,7 +258,9 @@ export function renderCheckPage(container, ctx = {}) {
             `<option value="${escapeHtml(r)}" ${r === room ? 'selected' : ''}>${escapeHtml(t('common.roomLabel'))} ${escapeHtml(r)}</option>`
         )
         .join('');
-    if (startBtn) startBtn.disabled = !(level && room);
+    level = levelSel?.value || lvl;
+    room = roomSel.value || room;
+    updatePickerState();
   }
 
   function cloneDisciplineMap(source = {}) {
@@ -256,31 +286,58 @@ export function renderCheckPage(container, ctx = {}) {
   function refreshSummary() {
     const row = body?.querySelector('.attendance-summary-row');
     if (!row) return;
-    const summary = countStatuses(students, attendance);
-    row.innerHTML = ATTENDANCE_STATUS_KEYS.map(
+    const weekend = isWeekendCheck();
+    row.innerHTML = renderSummaryHtml(countStatuses(students, attendance, { weekendView: weekend }), {
+      weekendUncheckedOnly: weekend && !weekendHasSavedData
+    });
+  }
+
+  function renderSummaryHtml(summary, { weekendUncheckedOnly = false } = {}) {
+    if (weekendUncheckedOnly) {
+      return `<div class="attendance-mini attendance-mini--unchecked"><div class="k">${escapeHtml(t('status.unchecked'))}</div><div class="v">${summary.unchecked ?? 0}</div></div>`;
+    }
+    return ATTENDANCE_STATUS_KEYS.map(
       (k) =>
-        `<div class="attendance-mini"><div class="k">${escapeHtml(statusLabel(k))}</div><div class="v">${summary[k]}</div></div>`
+        `<div class="attendance-mini"><div class="k">${escapeHtml(statusLabel(k))}</div><div class="v">${summary[k] ?? 0}</div></div>`
     ).join('');
+  }
+
+  function isWeekendCheck() {
+    return isWeekendDate(dateKey);
   }
 
   function renderStudentsUI() {
     if (!body) return;
-    const summary = countStatuses(students, attendance);
-    body.innerHTML = `<p class="attendance-teacher-line"><strong>${escapeHtml(level)}/${escapeHtml(room)}</strong> ${MIDDOT} ${students.length} ${escapeHtml(t('check.studentsCount'))}</p>
+    const weekend = isWeekendCheck();
+    const canEdit = isSchoolDay(dateKey);
+    const summary = countStatuses(students, attendance, { weekendView: weekend });
+    const clearBtn =
+      weekend && weekendHasSavedData
+        ? `<div class="check-weekend-actions">
+             <button type="button" class="button-secondary button-danger check-weekend-clear-btn" id="weekendClearBtn">${escapeHtml(t('check.weekendClearBtn'))}</button>
+           </div>`
+        : '';
+    const weekendBanner = weekend
+      ? `<div class="check-weekend-panel">
+           <p class="check-weekend-banner" role="status">${escapeHtml(t('check.weekendBanner'))}</p>
+           ${clearBtn}
+         </div>`
+      : '';
+    body.innerHTML = `${weekendBanner}<p class="attendance-teacher-line"><strong>${escapeHtml(level)}/${escapeHtml(room)}</strong> ${MIDDOT} ${students.length} ${escapeHtml(t('check.studentsCount'))}</p>
       <div class="attendance-summary-row">
-        ${ATTENDANCE_STATUS_KEYS.map((k) => `<div class="attendance-mini"><div class="k">${escapeHtml(statusLabel(k))}</div><div class="v">${summary[k] ?? 0}</div></div>`).join('')}
+        ${renderSummaryHtml(summary, { weekendUncheckedOnly: weekend && !weekendHasSavedData })}
       </div>
       <div class="attendance-tools">
         <input class="input-field attendance-tools__search" id="studentSearch" placeholder="${escapeHtml(t('check.searchPlaceholder'))}" />
         <div class="attendance-tools__actions">
-          <button type="button" class="attendance-chip-btn" id="markAllPresent">${escapeHtml(t('check.markAll'))}</button>
+          ${canEdit ? `<button type="button" class="attendance-chip-btn" id="markAllPresent">${escapeHtml(t('check.markAll'))}</button>` : ''}
           ${admin || multiClass ? `<button type="button" class="attendance-chip-btn" id="changeClassBtn">${escapeHtml(t('check.changeClass'))}</button>` : ''}
         </div>
       </div>
-      <div class="attendance-students-scroll attendance-students-list" id="studentList">${renderStudentCardListMarkup(students, attendance, discipline, true, ATTENDANCE_STATUS_KEYS, dateKey, { showBehavior: false })}</div>`;
+      <div class="attendance-students-scroll attendance-students-list" id="studentList">${renderStudentCardListMarkup(students, attendance, discipline, canEdit, ATTENDANCE_STATUS_KEYS, dateKey, { showBehavior: false, weekendView: weekend })}</div>`;
 
 
-    footer.hidden = false;
+    footer.hidden = !canEdit;
     bindInteractions();
   }
 
@@ -359,11 +416,63 @@ export function renderCheckPage(container, ctx = {}) {
         el.style.display = !search || text.includes(search) ? '' : 'none';
       });
     });
+
+    body.querySelector('#weekendClearBtn')?.addEventListener('click', () => {
+      if (!weekendHasSavedData) return;
+      if (!isOnline()) {
+        onToast?.(t('offline.offline'));
+        return;
+      }
+      if (!assertClassAccess()) return;
+      const classKey = buildAttendanceClassKey(level, room);
+      openConfirmModal({
+        title: t('check.weekendClearTitle'),
+        message: t('check.weekendClearMessage', {
+          class: classKey,
+          date: formatDateWithDayThai(dateKey),
+          count: weekendSavedCount
+        }),
+        confirmLabel: t('check.weekendClearBtn'),
+        danger: true,
+        onConfirm: () => {
+          void clearWeekendAttendance();
+        }
+      });
+    });
+  }
+
+  async function clearWeekendAttendance() {
+    const classKey = buildAttendanceClassKey(level, room);
+    const btn = body?.querySelector('#weekendClearBtn');
+    if (btn instanceof HTMLButtonElement) btn.disabled = true;
+    try {
+      const deleted = await deleteAttendanceForClassOnDate(classKey, dateKey);
+      await resyncPointsForClassDay({ classKey, date: dateKey, teacherName });
+      attendance = {};
+      discipline = {};
+      weekendHasSavedData = false;
+      weekendSavedCount = 0;
+      for (const s of students) {
+        discipline[String(s.student_id)] = emptyDisciplineEntry();
+      }
+      baselineDiscipline = cloneDisciplineMap(discipline);
+      await cacheClassSession(classKey, dateKey, { attendance, discipline, students });
+      onToast?.(t('check.weekendCleared', { count: deleted }));
+      renderStudentsUI();
+    } catch (err) {
+      console.error('[check] weekend clear failed', err);
+      onToast?.(err?.message || t('check.weekendClearFailed'));
+      if (btn instanceof HTMLButtonElement) btn.disabled = false;
+    }
   }
 
   async function resyncPointsForLoadedClass() {
     if (!isOnline() || !students.length || !level || !room || !teacherName) return 0;
     const classKey = buildAttendanceClassKey(level, room);
+    if (!isSchoolDay(dateKey)) {
+      await resyncPointsForClassDay({ classKey, date: dateKey, teacherName });
+      return 0;
+    }
     const studentsPayload = enrichStudentsForPointSync(
       students.map((s) => {
         const sid = String(s.student_id);
@@ -414,19 +523,28 @@ export function renderCheckPage(container, ctx = {}) {
         const records = await getAttendanceForClassOnDate(classKey, dateKey);
         attendance = recordsToAttendanceMap(records);
         discipline = recordsToDisciplineMap(records);
+        weekendHasSavedData = isWeekendCheck() && records.length > 0;
+        weekendSavedCount = records.length;
       } else {
         const cached = await getCachedClassSession(classKey, dateKey);
         attendance = cached?.attendance ?? {};
         discipline = cached?.discipline ?? {};
+        weekendHasSavedData = isWeekendCheck() && Object.keys(attendance).length > 0;
+        weekendSavedCount = Object.keys(attendance).length;
         if (!students.length) {
           throw new Error(t('offline.noCachedStudents'));
         }
       }
 
+      const weekend = isWeekendCheck();
+
       students.forEach((s) => {
         const sid = String(s.student_id);
-        if (!attendance[sid]) attendance[sid] = CHECK_DEFAULT_STATUS;
+        if (!weekend && !attendance[sid]) {
+          attendance[sid] = CHECK_DEFAULT_STATUS;
+        }
         if (!discipline[sid]) discipline[sid] = emptyDisciplineEntry();
+        if (weekend) return;
         if (normalizeAttendanceStatus(attendance[sid]) === 'absent') {
           if (!discipline[sid].disciplineWaived) {
             discipline[sid] = {
@@ -480,12 +598,12 @@ export function renderCheckPage(container, ctx = {}) {
     classReady = false;
     footer.hidden = true;
     if (pickerSheet && !hideClassPicker) pickerSheet.hidden = false;
-    body.innerHTML = renderEmpty(
-      level && room ? t('check.dateChangedHint') : hideClassPicker ? t('check.loadingStudents') : t('check.pickClass')
-    );
-    if (hideClassPicker && level && room) {
+    updatePickerState();
+    if (level && room) {
       void openClass();
+      return;
     }
+    body.innerHTML = renderEmpty(hideClassPicker ? t('check.loadingStudents') : t('check.pickClass'));
   });
 
   levelSel?.addEventListener('change', async () => {
@@ -496,13 +614,17 @@ export function renderCheckPage(container, ctx = {}) {
     persistClassSelection?.(level, '', { classConfirmed: false });
     if (level) await loadRooms(level);
     else if (roomSel) roomSel.disabled = true;
+    updatePickerState();
     body.innerHTML = renderEmpty(t('check.pickRoom'));
   });
 
   roomSel?.addEventListener('change', () => {
     room = roomSel.value;
-    if (startBtn) startBtn.disabled = !(level && room);
+    level = levelSel?.value || level;
+    classReady = false;
+    updatePickerState();
     persistClassSelection?.(level, room, { classConfirmed: false });
+    if (admin && level && room) void openClass();
   });
 
   assignedSel?.addEventListener('change', () => {
@@ -510,20 +632,27 @@ export function renderCheckPage(container, ctx = {}) {
     if (!key) {
       level = '';
       room = '';
-      if (startBtn) startBtn.disabled = true;
+      classReady = false;
+      updatePickerState();
       return;
     }
     const parts = classKeyToParts(key);
     level = parts.level;
     room = parts.room;
-    if (startBtn) startBtn.disabled = false;
+    classReady = false;
+    updatePickerState();
     persistClassSelection?.(level, room, { classConfirmed: false });
+    if (multiClass && level && room) void openClass();
   });
 
   startBtn?.addEventListener('click', () => void openClass());
 
   container.querySelector('#saveAttendance')?.addEventListener('click', async () => {
     if (!classReady || !students.length) return;
+    if (!isSchoolDay(dateKey)) {
+      onToast?.(t('check.weekendNoSave'));
+      return;
+    }
     if (!assertClassAccess()) return;
     const full = buildFullMap(students, attendance);
     const saveBtn = container.querySelector('#saveAttendance');
@@ -567,9 +696,8 @@ export function renderCheckPage(container, ctx = {}) {
         await openClass();
         return;
       }
-      if (singleClass && level && room) {
-        void openClass();
-      } else if (classReady && level && room && assertClassAccess()) {
+      updatePickerState();
+      if (level && room && assertClassAccess()) {
         void openClass();
       }
     })

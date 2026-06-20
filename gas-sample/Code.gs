@@ -898,7 +898,28 @@ function setStudentNumberOnRow_(row, lookup, num) {
 
 function writeStudentSheetRows_(sh, vals) {
   if (!vals || vals.length < 2) return;
-  sh.getRange(2, 1, vals.length, vals[0].length).setValues(vals.slice(1));
+  var numRows = vals.length - 1;
+  var numCols = vals[0].length;
+  sh.getRange(2, 1, numRows, numCols).setValues(vals.slice(1));
+}
+
+/** หาตำแหน่งแทรกแถวในชีต (index ใน vals) หลังขยับเลขที่แล้ว */
+function findStudentInsertRowIndex_(vals, lookup, level, room, newNum) {
+  var lastInClass = -1;
+  var r;
+  for (r = 1; r < vals.length; r++) {
+    if (!studentSheetRowInClass_(vals[r], lookup, level, room)) {
+      if (lastInClass >= 0 && newNum != null) break;
+      continue;
+    }
+    lastInClass = r;
+    if (newNum != null) {
+      var num = getStudentNumberFromRow_(vals[r], lookup);
+      if (num != null && num > newNum) return r;
+    }
+  }
+  if (lastInClass >= 0) return lastInClass + 1;
+  return vals.length;
 }
 
 /** แทรกเลขที่ N — คนที่เลขที่ >= N ในห้องเดียวกันขยับลง +1 */
@@ -1047,10 +1068,17 @@ function adminCreateStudent_(params) {
   var shifted = 0;
   if (newNum != null) {
     shifted = shiftStudentNumbersOnInsert_(vals, lookup, level, room, newNum, null);
-    if (shifted > 0) writeStudentSheetRows_(sh, vals);
   }
 
-  sh.appendRow(studentRowFromFields_(lookup.header, fields));
+  var newRow = studentRowFromFields_(lookup.header, fields);
+  var insertAt = findStudentInsertRowIndex_(vals, lookup, level, room, newNum);
+  if (insertAt >= vals.length) {
+    vals.push(newRow);
+  } else {
+    vals.splice(insertAt, 0, newRow);
+  }
+  writeStudentSheetRows_(sh, vals);
+
   var list = readStudents_('', '');
   var created = null;
   for (var i = 0; i < list.length; i++) {
@@ -1151,10 +1179,10 @@ function adminDeleteStudent_(params) {
   var shifted = 0;
   if (oldNum != null && level && room) {
     shifted = shiftStudentNumbersOnRemove_(found.vals, lookup, level, room, oldNum, studentId);
-    if (shifted > 0) writeStudentSheetRows_(sh, found.vals);
   }
 
-  sh.deleteRow(found.rowIndex + 1);
+  found.vals.splice(found.rowIndex, 1);
+  writeStudentSheetRows_(sh, found.vals);
   return ok_({ deleted: true, student_id: studentId, numbers_shifted: shifted });
 }
 

@@ -23,37 +23,19 @@ export function renderMenuPage(container, { state = {}, onNavigate, onBack, onLo
   const showDisciplineReport = canViewDisciplineReportSession(session);
   const showDisciplineRecords = canReturnDisciplinePointsSession(session);
 
-  /** @type {{ title: string, sub?: string, target: string, icon: string }[]} */
+  /** @type {{ title: string, target: string, icon: string }[]} */
   const links = [
-    { title: t('nav.history'), sub: t('menu.historySub'), target: '/history', icon: '◷' },
-    { title: t('nav.students'), sub: t('menu.studentsSub'), target: '/students', icon: '👤' },
-    ...(showBehavior
-      ? [{ title: t('nav.behavior'), sub: t('menu.behaviorSub'), target: '/behavior', icon: '✿' }]
-      : []),
+    { title: t('nav.history'), target: '/history', icon: '◷' },
+    { title: t('nav.students'), target: '/students', icon: '👤' },
+    ...(showBehavior ? [{ title: t('nav.behavior'), target: '/behavior', icon: '✿' }] : []),
     ...(showDisciplineReport
-      ? [
-          {
-            title: t('disciplineReport.open'),
-            sub: t('menu.disciplineReportSub'),
-            target: '/discipline-report',
-            icon: '☑'
-          }
-        ]
+      ? [{ title: t('disciplineReport.open'), target: '/discipline-report', icon: '☑' }]
       : []),
     ...(showDisciplineRecords && pastoral && !admin
-      ? [
-          {
-            title: t('disciplineRecords.open'),
-            sub: t('disciplineRecords.settingsHint'),
-            target: '/admin-discipline',
-            icon: '↩'
-          }
-        ]
+      ? [{ title: t('disciplineRecords.open'), target: '/admin-discipline', icon: '↩' }]
       : []),
-    ...(admin
-      ? [{ title: t('nav.admin'), sub: t('menu.adminSub'), target: '/admin', icon: '⚡' }]
-      : []),
-    { title: t('nav.settings'), sub: t('menu.settingsSub'), target: '/settings', icon: '⚙' }
+    ...(admin ? [{ title: t('nav.admin'), target: '/admin', icon: '⚡' }] : []),
+    { title: t('nav.settings'), target: '/settings', icon: '⚙' }
   ];
 
   const cards = links
@@ -62,7 +44,6 @@ export function renderMenuPage(container, { state = {}, onNavigate, onBack, onLo
         <span class="menu-link-card__icon" aria-hidden="true">${escapeHtml(item.icon)}</span>
         <span class="menu-link-card__text">
           <strong class="menu-link-card__title">${escapeHtml(item.title)}</strong>
-          ${item.sub ? `<span class="menu-link-card__sub">${escapeHtml(item.sub)}</span>` : ''}
         </span>
         <span class="menu-link-card__arrow" aria-hidden="true">›</span>
       </button>`
@@ -71,7 +52,7 @@ export function renderMenuPage(container, { state = {}, onNavigate, onBack, onLo
 
   container.innerHTML = `${renderPageHeader({
     title: t('menu.title'),
-    subtitle: t('menu.subtitle'),
+    subtitle: '',
     topAction: 'back'
   })}
   <nav class="menu-link-grid" aria-label="${escapeHtml(t('menu.title'))}">${cards}</nav>`;

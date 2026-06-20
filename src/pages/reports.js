@@ -10,7 +10,7 @@ import {
   isSchoolWideViewSession,
   getViewClassKeys,
   classKeysToPickerOptions,
-  canAccessClass
+  resolveReportPdfExport
 } from '../services/teacherAuth.js';
 import { fetchLevelOptions, fetchRoomOptions } from '../services/studentsService.js';
 import {
@@ -62,6 +62,7 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
   let view = 'class';
   let rows = [];
   let refreshSeq = 0;
+  let loadRoomsSeq = 0;
   const singleAssignedClass = !schoolWide && Array.isArray(viewKeys) && viewKeys.length === 1
     ? String(viewKeys[0] || '')
     : '';
@@ -126,9 +127,6 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
     </div>
     <div class="reports-toolbar__footer">
       <button type="button" class="reports-primary-link" id="repPointsReportBtn">${escapeHtml(t('pointsReport.open'))}</button>
-      <div class="reports-toolbar__matrix" id="repMatrixSection" hidden>
-        <button type="button" class="button-secondary reports-toolbar__matrix-btn" id="repExportMatrixPdf">${escapeHtml(t('pdf.matrixExportShort'))}</button>
-      </div>
     </div>
   </section>
   <section id="reportContent">${renderLoading()}</section>`;
@@ -146,7 +144,6 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
   const roomSel = container.querySelector('#repRoom');
   const teacherSel = container.querySelector('#repTeacher');
   const monthInput = container.querySelector('#repMonth');
-  const matrixSection = container.querySelector('#repMatrixSection');
   const toolbar = container.querySelector('.reports-toolbar');
   const toWrap = container.querySelector('#repToWrap');
   const fromWrap = container.querySelector('#repFromWrap');
@@ -154,7 +151,6 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
   const fromLabel = container.querySelector('#repFromLabel');
 
   function updateModeChrome() {
-    if (matrixSection) matrixSection.hidden = mode !== 'monthly';
     toolbar?.classList.toggle('reports-toolbar--monthly', mode === 'monthly');
     toolbar?.classList.toggle('reports-toolbar--daily', mode === 'daily');
     toolbar?.classList.toggle('reports-toolbar--weekly', mode === 'weekly');
@@ -231,7 +227,7 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
     }
   }
 
-  async function loadRooms(level) {
+  async function loadRooms(level, seq = loadRoomsSeq) {
     if (!roomSel) return;
     if (!level) {
       roomSel.innerHTML = `<option value="">${escapeHtml(t('common.all'))}</option>`;
@@ -239,6 +235,7 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
     }
     if (schoolWide) {
       const rooms = await fetchRoomOptions(level);
+      if (seq !== loadRoomsSeq) return;
       roomSel.innerHTML =
         `<option value="">${escapeHtml(t('common.all'))}</option>` +
         rooms.map((r) => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
@@ -247,12 +244,27 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
     try {
       const map = JSON.parse(levelSel?.dataset.rooms || '{}');
       const rooms = map[level] || [];
+      if (seq !== loadRoomsSeq) return;
       roomSel.innerHTML =
         `<option value="">${escapeHtml(t('common.all'))}</option>` +
         rooms.map((r) => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
     } catch {
+      if (seq !== loadRoomsSeq) return;
       roomSel.innerHTML = `<option value="">${escapeHtml(t('common.all'))}</option>`;
     }
+  }
+
+  /** โหลดห้องแล้ว refresh — ห้าม refresh ก่อน dropdown ห้องพร้อม */
+  async function onLevelChange() {
+    const seq = ++loadRoomsSeq;
+    const level = levelSel?.value || '';
+    if (roomSel) roomSel.value = '';
+    await loadRooms(level, seq);
+    if (seq !== loadRoomsSeq) return;
+    if (level && roomSel && roomSel.options.length === 2) {
+      roomSel.selectedIndex = 1;
+    }
+    void refresh();
   }
 
   function paintTeacherOptions(names) {
@@ -273,10 +285,6 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
   }
 
   async function renderReport() {
-    if (!rows.length) {
-      content.innerHTML = renderEmpty(t('history.empty'));
-      return;
-    }
     const level = levelSel?.value || '';
     const room = roomSel?.value || '';
     const classKey = level && room ? buildAttendanceClassKey(level, room) : '';
@@ -293,9 +301,23 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
       return;
     }
 
-    const exportSection = `<section class="reports-export-card reports-export-card--bottom reports-export-card--compact glass-card">
+    const pdfAccess = resolveReportPdfExport(session, mode, classKey);
+    const canExportMonthlyMatrix = mode === 'monthly' && pdfAccess.ok;
+    const exportSection = pdfAccess.ok
+      ? `<section class="reports-export-card reports-export-card--bottom reports-export-card--compact glass-card">
       <button type="button" class="button-primary reports-export-card__button" id="repExportPdf">${escapeHtml(t('pdf.export'))}</button>
-    </section>`;
+    </section>`
+      : '';
+
+    if (!rows.length && !canExportMonthlyMatrix) {
+      content.innerHTML = renderEmpty(t('history.empty'));
+      return;
+    }
+
+    if (!rows.length && canExportMonthlyMatrix) {
+      content.innerHTML = `${renderEmpty(t('history.empty'))}${exportSection}`;
+      return;
+    }
 
     const reportBody = renderReportBody({
       rows,
@@ -366,8 +388,7 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
   });
 
   levelSel?.addEventListener('change', () => {
-    void loadRooms(levelSel.value);
-    void refresh();
+    void onLevelChange();
   });
   roomSel?.addEventListener('change', () => void refresh());
   teacherSel?.addEventListener('change', () => void refresh());
@@ -410,7 +431,9 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
       const slash = classKey.indexOf('/');
       if (slash > 0 && levelSel && roomSel) {
         levelSel.value = classKey.slice(0, slash);
-        void loadRooms(levelSel.value).then(() => {
+        const seq = ++loadRoomsSeq;
+        void loadRooms(levelSel.value, seq).then(() => {
+          if (seq !== loadRoomsSeq) return;
           roomSel.value = classKey.slice(slash + 1);
           void refresh();
         });
@@ -431,7 +454,17 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
     }
     const btn = e.target.closest('#repExportPdf');
     if (btn instanceof HTMLButtonElement) {
-      if (!rows.length) {
+      const from = fromInput?.value || today;
+      const to = toInput?.value || today;
+      const level = levelSel?.value || '';
+      const room = roomSel?.value || '';
+      const classKey = level && room ? buildAttendanceClassKey(level, room) : '';
+      const pdfAccess = resolveReportPdfExport(session, mode, classKey);
+      if (!pdfAccess.ok) {
+        onToast?.(t(pdfAccess.messageKey || 'pdf.exportDenied'));
+        return;
+      }
+      if (!rows.length && pdfAccess.pdfKind !== 'monthlyMatrix') {
         onToast?.(t('history.empty'));
         return;
       }
@@ -440,20 +473,22 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
       const prevLabel = btn.textContent;
       btn.textContent = t('pdf.exporting');
       try {
-        const from = fromInput?.value || today;
-        const to = toInput?.value || today;
         const classLabel =
-          levelSel?.value && roomSel?.value
-            ? buildAttendanceClassKey(levelSel.value, roomSel.value)
-            : levelSel?.value || '';
-        await exportReportPdf({
-          mode,
-          from,
-          to,
-          teacherName: session?.teacherName || '',
-          classLabel,
-          rows
-        });
+          classKey || (levelSel?.value && !roomSel?.value ? levelSel.value : '');
+        if (pdfAccess.pdfKind === 'monthlyMatrix') {
+          const yearMonth = monthInput?.value || from.slice(0, 7) || today.slice(0, 7);
+          await exportMonthlyClassMatrixPdf({ yearMonth, classKey, session });
+        } else {
+          await exportReportPdf({
+            mode,
+            from,
+            to,
+            teacherName: session?.teacherName || '',
+            classLabel,
+            rows,
+            dailyLayout: pdfAccess.dailyLayout || 'default'
+          });
+        }
         onToast?.(t('pdf.exportDone'));
       } catch (err) {
         onToast?.(err?.message || t('pdf.exportFailed'));
@@ -475,31 +510,6 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
       if (room) qs.set('room', room);
       onNavigate?.(`/points-report?${qs.toString()}`);
       return;
-    }
-
-    const matrixBtn = e.target.closest('#repExportMatrixPdf');
-    if (!(matrixBtn instanceof HTMLButtonElement)) return;
-
-    const level = levelSel?.value || '';
-    const room = roomSel?.value || '';
-    if (!level || !room) {
-      onToast?.(t('pdf.matrixPickClass'));
-      return;
-    }
-    const classKey = buildAttendanceClassKey(level, room);
-    if (!canAccessClass(session, classKey)) {
-      onToast?.(t('admin.denied'));
-      return;
-    }
-    const yearMonth = monthInput?.value || fromInput?.value?.slice(0, 7) || today.slice(0, 7);
-    try {
-      matrixBtn.disabled = true;
-      await exportMonthlyClassMatrixPdf({ yearMonth, classKey, session });
-      onToast?.(t('pdf.matrixExportDone'));
-    } catch (err) {
-      onToast?.(err?.message || t('pdf.exportFailed'));
-    } finally {
-      matrixBtn.disabled = false;
     }
   });
 

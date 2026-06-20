@@ -1,6 +1,7 @@
 import { escapeHtml } from '../utils/html.js';
 import {
   ATTENDANCE_STATUS_KEYS,
+  ATTENDANCE_UNCHECKED,
   CHECK_DEFAULT_STATUS,
   normalizeAttendanceStatus
 } from '../data/attendanceStatuses.js';
@@ -28,7 +29,8 @@ const statusPillClasses = {
   leave: 'status-leave',
   errand: 'status-errand',
   activity: 'status-activity',
-  sick: 'status-sick'
+  sick: 'status-sick',
+  unchecked: 'status-unchecked'
 };
 
 export { ATTENDANCE_STATUS_KEYS };
@@ -137,40 +139,44 @@ export function renderStudentCardMarkup(
 ) {
   const showDiscipline = sections.showDiscipline !== false;
   const showBehavior = sections.showBehavior === true;
+  const isUnchecked = currentStatus === ATTENDANCE_UNCHECKED;
   const sid = escapeHtml(student.student_id);
   const fname = escapeHtml(student.first_name);
   const lname = escapeHtml(student.last_name);
 
   const buttons = statusKeys
     .map((key) => {
-      const selected = currentStatus === key ? ' attendance-status-btn--selected' : '';
-      const disabled = canEdit ? '' : 'disabled';
+      const selected = !isUnchecked && currentStatus === key ? ' attendance-status-btn--selected' : '';
+      const disabled = !canEdit || isUnchecked ? 'disabled' : '';
       const label = escapeHtml(statusLabel(key));
       return `
       <button type="button" class="attendance-status-btn attendance-status-btn--${key}${selected}"
         data-student-id="${sid}" data-status="${escapeHtml(key)}" ${disabled}
-        aria-pressed="${currentStatus === key ? 'true' : 'false'}">
+        aria-pressed="${!isUnchecked && currentStatus === key ? 'true' : 'false'}">
         <span class="attendance-status-btn__icon attendance-status-btn__icon--${key}" aria-hidden="true"></span>
         <span class="attendance-status-btn__label">${label}</span>
       </button>`;
     })
     .join('');
 
-  const pillClass = statusPillClasses[currentStatus] || statusPillClasses.absent;
+  const pillClass = isUnchecked
+    ? statusPillClasses.unchecked
+    : statusPillClasses[currentStatus] || statusPillClasses.absent;
+  const pillLabel = isUnchecked ? t('status.unchecked') : statusLabel(currentStatus);
   const idLine = student.number
     ? joinWithDot(`รหัส ${student.student_id}`, `เลขที่ ${student.number}`)
     : `รหัส ${sid}`;
 
   return `
-    <article class="attendance-student-card" data-student-id="${sid}" data-attendance-status="${escapeHtml(currentStatus)}">
+    <article class="attendance-student-card${isUnchecked ? ' attendance-student-card--unchecked' : ''}" data-student-id="${sid}" data-attendance-status="${escapeHtml(currentStatus)}">
       <div class="attendance-student-card__top">
         <div class="attendance-student-card__avatar" aria-hidden="true">${initials(student)}</div>
         <div class="attendance-student-card__info">
           <div class="attendance-student-card__name">${fname} ${lname}</div>
           <div class="attendance-student-card__id">${escapeHtml(idLine)}</div>
         </div>
-        <span class="attendance-student-card__pill status-pill ${pillClass} attendance-student-card__pill--${escapeHtml(currentStatus)}"
-          aria-label="status">${escapeHtml(statusLabel(currentStatus))}</span>
+        <span class="attendance-student-card__pill status-pill ${pillClass} attendance-student-card__pill--${escapeHtml(isUnchecked ? ATTENDANCE_UNCHECKED : currentStatus)}"
+          aria-label="status">${escapeHtml(pillLabel)}</span>
       </div>
       <div class="attendance-status-row" role="group" aria-label="${escapeHtml(t('check.statusGroup'))}">${buttons}</div>
       ${showDiscipline ? renderInspectionSection(student.student_id, disciplineEntry, checkDate, canEdit, currentStatus) : ''}
@@ -222,10 +228,14 @@ export function renderStudentCardListMarkup(
   checkDate = '',
   sections = {}
 ) {
+  const weekendView = sections.weekendView === true;
   return students
     .map((student) => {
       const id = student.student_id;
-      const st = attendance[id] || CHECK_DEFAULT_STATUS;
+      const hasRecord = Object.prototype.hasOwnProperty.call(attendance, id);
+      const st = weekendView && !hasRecord
+        ? ATTENDANCE_UNCHECKED
+        : attendance[id] || CHECK_DEFAULT_STATUS;
       const disc = discipline[id] || emptyDisciplineEntry();
       return renderStudentCardMarkup(student, st, disc, canEdit, statusKeys, checkDate, sections);
     })

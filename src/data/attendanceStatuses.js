@@ -1,5 +1,13 @@
-/** Default status when opening check page (no saved record yet). */
+/** Default status when opening check page on school days (no saved record yet). */
 export const CHECK_DEFAULT_STATUS = 'absent';
+
+/** Display-only — weekend / no record yet (never persisted). */
+export const ATTENDANCE_UNCHECKED = 'unchecked';
+
+/** @param {unknown} value */
+export function isUncheckedAttendanceStatus(value) {
+  return value === ATTENDANCE_UNCHECKED;
+}
 
 /** Status keys used in UI (check, history, reports, edit, student profile). */
 export const ATTENDANCE_STATUS_KEYS = [

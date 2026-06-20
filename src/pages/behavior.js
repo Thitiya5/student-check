@@ -33,7 +33,7 @@ import {
   canViewLevelRoom,
   classKeyToParts
 } from '../services/teacherAuth.js';
-import { getTodayDate } from '../utils/dateIso.js';
+import { getTodayDate, isSchoolDay } from '../utils/dateIso.js';
 import { formatDateWithDayThai } from '../components/datePicker.js';
 import {
   isDisciplineScoringEnabled,
@@ -122,7 +122,7 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
       <button type="button" class="button-primary" id="behLoadBtn" disabled>${escapeHtml(t('behavior.loadClass'))}</button>
     </section>
     <div id="behContextBar" class="behavior-context-bar" hidden></div>
-    <section id="behBody">${renderEmpty(t('behavior.pickClass'), t('behavior.pickClassHint'))}</section>
+    <section id="behBody">${renderEmpty(t('behavior.pickClass'))}</section>
     <footer class="attendance-save-footer" id="behFooter" hidden>
       <button type="button" class="attendance-save-btn button-primary" id="behSaveBtn">${escapeHtml(t('common.save'))}</button>
     </footer>
@@ -180,7 +180,7 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
     if (body) {
       body.innerHTML = renderEmpty(
         !isGasConfigured() ? t('check.gasNotConfigured') : t('behavior.scoringDisabled'),
-        !isGasConfigured() ? t('check.gasHint') : t('behavior.scoringDisabledHint')
+        !isGasConfigured() ? t('check.gasHint') : ''
       );
     }
     return;
@@ -340,6 +340,8 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
   function renderList() {
     if (!body || !loaded) return;
     paintContextBar();
+    const canEdit = isSchoolDay(dateKey);
+    if (footer) footer.hidden = !canEdit;
     const q = searchInput?.value.trim().toLowerCase() || '';
     const filtered = q
       ? students.filter((s) => {
@@ -355,8 +357,12 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
 
     const withBehaviors = filtered.filter((s) => (discipline[s.student_id]?.behaviors || []).length > 0).length;
 
-    body.innerHTML = `<p class="behavior-class-line"><strong>${escapeHtml(level)}/${escapeHtml(room)}</strong> · ${filtered.length} ${escapeHtml(t('check.studentsCount'))}${withBehaviors ? ` · ${escapeHtml(t('behavior.recordedCount', { count: withBehaviors }))}` : ''}</p>
-      <div class="behavior-students-list" id="behStudentList">${renderBehaviorStudentCardListMarkup(filtered, discipline, true, dateKey)}</div>`;
+    const weekendBanner = !canEdit
+      ? `<p class="check-weekend-banner" role="status">${escapeHtml(t('check.weekendBanner'))}</p>`
+      : '';
+
+    body.innerHTML = `${weekendBanner}<p class="behavior-class-line"><strong>${escapeHtml(level)}/${escapeHtml(room)}</strong> · ${filtered.length} ${escapeHtml(t('check.studentsCount'))}${withBehaviors ? ` · ${escapeHtml(t('behavior.recordedCount', { count: withBehaviors }))}` : ''}</p>
+      <div class="behavior-students-list" id="behStudentList">${renderBehaviorStudentCardListMarkup(filtered, discipline, canEdit, dateKey)}</div>`;
     bindBehaviorInteractions();
     requestAnimationFrame(() => focusStudentCard());
   }
@@ -446,7 +452,7 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
       return;
     }
     if (!isDisciplineActiveDate(dateKey)) {
-      if (body) body.innerHTML = renderEmpty(t('behavior.inactiveDate'), t('behavior.inactiveDateHint'));
+      if (body) body.innerHTML = renderEmpty(t('behavior.inactiveDate'));
       loaded = false;
       if (footer) footer.hidden = true;
       return;
@@ -465,7 +471,7 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
       }
       loaded = true;
       dismissSaveResultBadge();
-      if (footer) footer.hidden = false;
+      if (footer) footer.hidden = !isSchoolDay(dateKey);
       renderList();
     } catch (err) {
       if (body) body.innerHTML = renderEmpty(t('behavior.loadFailed'), err?.message || '');
@@ -476,6 +482,9 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
   async function saveBehaviors(pin, { quiet = false } = {}) {
     if (!loaded || !students.length || !session) {
       throw new Error(t('behavior.saveFailed'));
+    }
+    if (!isSchoolDay(dateKey)) {
+      throw new Error(t('check.weekendNoSave'));
     }
     const classKey = buildAttendanceClassKey(level, room);
     await verifyBehaviorWritePin(session, pin);
@@ -718,7 +727,7 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
     if (footer) footer.hidden = true;
     paintContextBar();
     if (level && room && body) {
-      if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'), t('behavior.dateChangedHint'));
+      if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'));
     }
   });
 
@@ -732,11 +741,11 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
     if (footer) footer.hidden = true;
     if (!level) {
       roomSel.innerHTML = `<option value="">${escapeHtml(t('common.select'))}</option>`;
-      if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'), t('behavior.pickClassHint'));
+      if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'));
       return;
     }
     await populateRooms(roomSel, level);
-    if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'), t('behavior.pickClassHint'));
+    if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'));
   });
 
   roomSel?.addEventListener('change', () => {
@@ -745,14 +754,14 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
     loaded = false;
     if (footer) footer.hidden = true;
     if (!room) {
-      if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'), t('behavior.pickClassHint'));
+      if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'));
       return;
     }
     if (!canViewLevelRoom(session, level, room)) {
       if (body) body.innerHTML = renderEmpty(t('toast.classNotAllowed'));
       return;
     }
-    if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'), t('behavior.pickClassHint'));
+    if (body) body.innerHTML = renderEmpty(t('behavior.pickClass'));
   });
 
   histLevelSel?.addEventListener('change', async () => {
@@ -784,6 +793,10 @@ export function renderBehaviorPage(container, { state = {}, onNavigate, onBack, 
   loadBtn?.addEventListener('click', () => void loadClass());
 
   container.querySelector('#behSaveBtn')?.addEventListener('click', () => {
+    if (!isSchoolDay(dateKey)) {
+      onToast?.(t('check.weekendNoSave'));
+      return;
+    }
     const needsPin = session && !session.isAdmin;
     const runSave = (pin = '') => saveBehaviors(pin).catch((err) => onToast?.(err?.message || t('behavior.saveFailed')));
 

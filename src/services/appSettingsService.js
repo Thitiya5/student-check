@@ -1,7 +1,7 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebaseClient.js';
 import { DEFAULT_APP_SETTINGS } from '../config/appSettingsDefaults.js';
-import { formatDateInBangkok, isIsoDateKey, parseIsoDateKeys } from '../utils/dateIso.js';
+import { formatDateInBangkok, isIsoDateKey, isSchoolDay, parseIsoDateKeys } from '../utils/dateIso.js';
 
 const COLLECTION = 'app_settings';
 const DOC_ID = 'school';
@@ -250,6 +250,7 @@ export function getAttendanceScoringStartDate() {
  * @param {string} [date] yyyy-MM-dd
  */
 export function canApplyAttendancePenaltyOnDate(date) {
+  if (!isSchoolDay(date)) return false;
   if (!isAttendanceScoringEnabled()) return false;
   const start = getAttendanceScoringStartDate();
   return !start || String(date || '') >= start;
@@ -275,6 +276,7 @@ export function isDisciplineActiveDate(date) {
  * @param {AppSettings} [settings]
  */
 export function canRecordDisciplineOnDate(date, settings = getAppSettings()) {
+  if (!isSchoolDay(date)) return false;
   if (!settings.discipline.enabled) return false;
   const dateStr = String(date || '');
   if (!dateStr) return false;
@@ -426,6 +428,8 @@ export function isInspectionDayFromSettings(date, settings = getAppSettings()) {
   if (insp.mode === 'custom') {
     return (insp.customDates || []).includes(dateStr);
   }
+
+  if (!isSchoolDay(dateStr)) return false;
 
   if (insp.mode === 'weekly') {
     const dt = new Date(`${dateStr}T12:00:00`);

@@ -13,6 +13,7 @@ import { syncClassPointTransactions, enrichStudentsForPointSync } from './servic
 import { renderBottomNav } from './components/navbar.js';
 import { openConfirmModal } from './components/confirmModal.js';
 import { loadAppState, saveAppState, getTodayDateKey, getDefaultAppState, STORAGE_KEY } from './data/mock.js';
+import { isSchoolDay } from './utils/dateIso.js';
 import { syncStateToToday, startDayRolloverWatch } from './services/appDay.js';
 import {
   buildAttendanceClassKey,
@@ -394,6 +395,11 @@ async function submitAttendance(
   }
 
   await initAppSettings();
+
+  if (!isSchoolDay(dateKey)) {
+    showToast(t('check.weekendNoSave'));
+    return false;
+  }
 
   const studentsPayload = enrichStudentsForPointSync(
     classStudents.map((s) => {

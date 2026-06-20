@@ -28,7 +28,7 @@ export function renderAdminPage(container, { state, onNavigate, onToast, onLogou
 
   if (!isAdminSession(session)) {
 
-    container.innerHTML = renderEmpty(t('admin.denied'), t('admin.deniedHint'));
+    container.innerHTML = renderEmpty(t('admin.denied'));
 
     container.querySelector('.ui-empty')?.addEventListener('click', () => onNavigate('/dashboard'));
 

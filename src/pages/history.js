@@ -40,10 +40,9 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
 
   container.innerHTML = `${renderPageHeader({
     title: t('history.title'),
-    subtitle: t('history.subtitle'),
+    subtitle: '',
     topAction: 'back'
   })}
-  <p class="history-points-hint glass-card">${escapeHtml(t('history.pointsHint'))}</p>
   <section class="filter-panel glass-card">
     <div class="filter-grid">
       <label class="field"><span>${escapeHtml(t('common.date'))}</span><input type="date" id="histDate" class="input-field" value="${escapeHtml(filters.attendanceDate)}" /></label>
@@ -88,7 +87,7 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
       );
     }
     if (!visible.length) {
-      listEl.innerHTML = renderEmpty(t('history.empty'), t('history.emptyHint'));
+      listEl.innerHTML = renderEmpty(t('history.empty'));
       return;
     }
     listEl.innerHTML = visible

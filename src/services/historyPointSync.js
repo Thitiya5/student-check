@@ -14,7 +14,7 @@ import {
 } from './studentPointsService.js';
 import { classKeyToParts } from './teacherAuth.js';
 import { initAppSettings } from './appSettingsService.js';
-import { enumerateDateKeys } from '../utils/dateIso.js';
+import { enumerateDateKeys, isSchoolDay } from '../utils/dateIso.js';
 
 /**
  * Rebuild point transactions for one class/day after history edit or delete.
@@ -26,6 +26,11 @@ export async function resyncPointsForClassDay(opts) {
   const date = String(opts.date || '');
   const parts = classKeyToParts(classKey);
   if (!parts.level || !parts.room || !date) return;
+
+  if (!isSchoolDay(date)) {
+    await purgeSystemPointTransactionsForClassDay(classKey, date);
+    return;
+  }
 
   const records = await getAttendanceForClassOnDate(classKey, date);
   if (!records.length) {
@@ -121,6 +126,11 @@ export async function reconcileStaleSystemPoints(session, opts = {}) {
 
   let reconciled = 0;
   for (const { classKey, date } of jobs) {
+    if (!isSchoolDay(date)) {
+      await purgeSystemPointTransactionsForClassDay(classKey, date);
+      reconciled += 1;
+      continue;
+    }
     const records = await getAttendanceForClassOnDate(classKey, date);
     if (records.length) continue;
     await resyncPointsForClassDay({ classKey, date, teacherName });

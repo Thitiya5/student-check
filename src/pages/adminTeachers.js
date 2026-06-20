@@ -18,7 +18,7 @@ import {
 export function renderAdminTeachersPage(container, { state, onNavigate, onToast, onLogout, onBack }) {
   const session = state.teacherAuth || loadTeacherAuthSession();
   if (!isAdminSession(session)) {
-    container.innerHTML = renderEmpty(t('admin.denied'), t('admin.deniedHint'));
+    container.innerHTML = renderEmpty(t('admin.denied'));
     return;
   }
 
@@ -27,7 +27,7 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
 
   container.innerHTML = `${renderPageHeader({
     title: t('adminTeachers.title'),
-    subtitle: t('adminTeachers.subtitle'),
+    subtitle: '',
     topAction: 'back'
   })}
   <section class="glass-card admin-toolbar admin-toolbar--sub">
@@ -66,8 +66,7 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
     const rows = visibleTeachers();
     if (!rows.length) {
       listEl.innerHTML = renderEmpty(
-        search ? t('adminTeachers.emptySearch') : t('adminTeachers.empty'),
-        t('adminTeachers.emptyHint')
+        search ? t('adminTeachers.emptySearch') : t('adminTeachers.empty')
       );
       return;
     }
@@ -137,7 +136,6 @@ export function renderAdminTeachersPage(container, { state, onNavigate, onToast,
         <label class="field">
           <span>${escapeHtml(t('adminTeachers.classes'))}</span>
           <input type="text" id="tcClasses" class="input-field" required value="${escapeHtml(teacher?.assigned_classes || '')}" placeholder="${escapeHtml(t('adminTeachers.classesPh'))}" />
-          <p class="field-hint">${escapeHtml(t('adminTeachers.classesHint'))}</p>
         </label>
         <label class="field">
           <span>${escapeHtml(t('adminTeachers.role'))}</span>

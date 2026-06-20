@@ -9,7 +9,8 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from './firebaseClient.js';
-import { getTodayDate, chunkDateRange } from '../utils/dateIso.js';
+import { getTodayDate, chunkDateRange, isSchoolDay } from '../utils/dateIso.js';
+import { t } from '../i18n/index.js';
 import { normalizeAttendanceStatus } from '../data/attendanceStatuses.js';
 import { parseDisciplineFromRecord } from '../data/disciplineChecks.js';
 import {
@@ -338,6 +339,9 @@ export async function saveClassAttendance({ classKey, teacherName, attendanceDat
   }
 
   const dateKey = attendanceDate || getTodayDate();
+  if (!isSchoolDay(dateKey)) {
+    throw new Error(t('check.weekendNoSave'));
+  }
   const col = collection(db, COLLECTION);
   const ids = [];
 
@@ -398,6 +402,17 @@ export async function updateAttendanceRecord(id, updates) {
 
 export async function deleteAttendanceRecord(id) {
   await deleteDoc(doc(db, COLLECTION, id));
+}
+
+/**
+ * Delete all attendance rows for one class on one date.
+ * @returns {Promise<number>} rows deleted
+ */
+export async function deleteAttendanceForClassOnDate(classKey, attendanceDate) {
+  const records = await getAttendanceForClassOnDate(classKey, attendanceDate);
+  if (!records.length) return 0;
+  await Promise.all(records.map((r) => deleteDoc(doc(db, COLLECTION, r.id))));
+  return records.length;
 }
 
 /**

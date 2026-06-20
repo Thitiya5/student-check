@@ -6,7 +6,7 @@ import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeade
 import { bindSettingsInstall } from '../components/installPrompt.js';
 import { loadTeacherAuthSession, isAdminSession, canManageBehaviorSession, isPastoralSession, canReturnDisciplinePointsSession } from '../services/teacherAuth.js';
 
-const APP_VERSION = '3.0.1';
+const APP_VERSION = '3.1.0';
 
 export function renderSettingsPage(container, ctx = {}) {
   const { state = {}, onLogout, onToast, onLocaleChange, onNavigate, onBack } = ctx;
@@ -54,7 +54,6 @@ export function renderSettingsPage(container, ctx = {}) {
     <div class="settings-toggle-row" id="themeToggleRow">
       <div>
         <p class="settings-toggle__label" id="themeToggleLabel">${escapeHtml(t('settings.darkMode'))}</p>
-        <p class="settings-toggle__hint" id="themeToggleHint">${escapeHtml(theme === 'dark' ? t('settings.themeDarkHint') : t('settings.themeLightHint'))}</p>
       </div>
       <label class="settings-switch" aria-label="${escapeHtml(t('settings.darkMode'))}">
         <input type="checkbox" id="themeToggle" ${theme === 'dark' ? 'checked' : ''} />
@@ -70,7 +69,6 @@ export function renderSettingsPage(container, ctx = {}) {
     <button type="button" class="settings-action-row" id="settingsDisciplineRecordsLink">
       <span class="settings-action-row__text">
         <span class="settings-action-row__title">${escapeHtml(t('disciplineRecords.open'))}</span>
-        <span class="settings-action-row__hint">${escapeHtml(t('disciplineRecords.settingsHint'))}</span>
       </span>
       <span class="settings-action-row__arrow" aria-hidden="true">›</span>
     </button>
@@ -85,7 +83,6 @@ export function renderSettingsPage(container, ctx = {}) {
     <button type="button" class="settings-action-row" id="settingsBehaviorLink">
       <span class="settings-action-row__text">
         <span class="settings-action-row__title">${escapeHtml(t('behavior.open'))}</span>
-        <span class="settings-action-row__hint">${escapeHtml(t('behavior.settingsHint'))}</span>
       </span>
       <span class="settings-action-row__arrow" aria-hidden="true">›</span>
     </button>
@@ -100,7 +97,6 @@ export function renderSettingsPage(container, ctx = {}) {
     <button type="button" class="settings-action-row" id="settingsChangePinLink">
       <span class="settings-action-row__text">
         <span class="settings-action-row__title">${escapeHtml(t('changePin.open'))}</span>
-        <span class="settings-action-row__hint">${escapeHtml(t('changePin.adminHint'))}</span>
       </span>
       <span class="settings-action-row__arrow" aria-hidden="true">›</span>
     </button>
@@ -115,7 +111,6 @@ export function renderSettingsPage(container, ctx = {}) {
     <button type="button" class="settings-action-row" id="settingsAdminLink">
       <span class="settings-action-row__text">
         <span class="settings-action-row__title">${escapeHtml(t('settingsAdmin.manage'))}</span>
-        <span class="settings-action-row__hint">${escapeHtml(t('settingsAdmin.subtitle'))}</span>
       </span>
       <span class="settings-action-row__arrow" aria-hidden="true">›</span>
     </button>
@@ -128,7 +123,6 @@ export function renderSettingsPage(container, ctx = {}) {
     <button type="button" class="settings-action-row" id="settingsInstallApp">
       <span class="settings-action-row__text">
         <span class="settings-action-row__title">${escapeHtml(t('pwa.install'))}</span>
-        <span class="settings-action-row__hint" id="settingsInstallHint">${escapeHtml(t('pwa.installHintShort'))}</span>
       </span>
       <span class="settings-action-row__arrow" aria-hidden="true">›</span>
     </button>
@@ -155,14 +149,10 @@ export function renderSettingsPage(container, ctx = {}) {
   });
 
   const themeToggle = container.querySelector('#themeToggle');
-  const themeHint = container.querySelector('#themeToggleHint');
 
   function syncThemeUi() {
     const dark = getTheme() === 'dark';
     if (themeToggle instanceof HTMLInputElement) themeToggle.checked = dark;
-    if (themeHint) {
-      themeHint.textContent = dark ? t('settings.themeDarkHint') : t('settings.themeLightHint');
-    }
   }
 
   const offThemeChange = onThemeChange(syncThemeUi);

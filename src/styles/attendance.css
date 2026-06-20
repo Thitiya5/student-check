@@ -10,6 +10,55 @@
   border: 1px solid rgba(13, 159, 110, 0.25);
 }
 
+.check-weekend-banner {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.45;
+  color: #7a4d00;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.check-weekend-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.check-weekend-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted, #64748b);
+}
+
+.check-weekend-actions {
+  margin: 0;
+}
+
+.check-weekend-clear-btn {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.attendance-mini--unchecked .k {
+  color: #64748b;
+}
+
+.status-unchecked,
+.attendance-student-card__pill--unchecked {
+  color: #64748b;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.attendance-student-card--unchecked .attendance-status-row {
+  opacity: 0.5;
+}
+
 #checkBody {
   display: flex;
   flex-direction: column;
@@ -215,9 +264,23 @@
 
 .class-picker-hint {
   margin: 0;
+  padding: 0 16px 0.5rem;
   font-size: 0.82rem;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.class-picker-go {
+  margin: 0 16px 12px;
+  width: calc(100% - 32px);
+  min-height: 48px;
+}
+
+.class-picker-go:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .class-picker-fixed {
@@ -239,11 +302,6 @@
 
 .class-picker-single {
   margin-bottom: 0.5rem;
-}
-
-.class-picker-go {
-  margin: 0 16px 12px;
-  width: calc(100% - 32px);
 }
 
 .class-picker-note {

@@ -21,7 +21,7 @@ import {
 export function renderAdminStudentsPage(container, { state, onNavigate, onToast, onLogout, onBack }) {
   const session = state.teacherAuth || loadTeacherAuthSession();
   if (!isAdminSession(session)) {
-    container.innerHTML = renderEmpty(t('admin.denied'), t('admin.deniedHint'));
+    container.innerHTML = renderEmpty(t('admin.denied'));
     return;
   }
 
@@ -32,7 +32,7 @@ export function renderAdminStudentsPage(container, { state, onNavigate, onToast,
 
   container.innerHTML = `${renderPageHeader({
     title: t('adminStudents.title'),
-    subtitle: t('adminStudents.subtitle'),
+    subtitle: '',
     topAction: 'back'
   })}
   <section class="glass-card admin-toolbar admin-toolbar--sub">
@@ -54,7 +54,7 @@ export function renderAdminStudentsPage(container, { state, onNavigate, onToast,
       </label>
     </div>
   </section>
-  <section id="adminStudentsList">${renderEmpty(t('adminStudents.pickBoth'), t('adminStudents.pickHint'))}</section>`;
+  <section id="adminStudentsList">${renderEmpty(t('adminStudents.pickBoth'))}</section>`;
 
   bindPageHeaderActions(container, {
     onLogout,
@@ -80,14 +80,13 @@ export function renderAdminStudentsPage(container, { state, onNavigate, onToast,
   function renderList() {
     if (!listEl) return;
     if (!level || !room) {
-      listEl.innerHTML = renderEmpty(t('adminStudents.pickBoth'), t('adminStudents.pickHint'));
+      listEl.innerHTML = renderEmpty(t('adminStudents.pickBoth'));
       return;
     }
     const rows = visibleStudents();
     if (!rows.length) {
       listEl.innerHTML = renderEmpty(
-        search ? t('adminStudents.emptySearch') : t('students.emptyClass'),
-        t('adminStudents.emptyHint')
+        search ? t('adminStudents.emptySearch') : t('students.emptyClass')
       );
       return;
     }

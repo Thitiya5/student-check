@@ -11,7 +11,7 @@ export function renderChangePinPage(container, { onSubmit, onNavigate, onBack, o
   container.innerHTML = `
     ${renderPageHeader({
       title: t('changePin.title'),
-      subtitle: t('changePin.adminSubtitle'),
+      subtitle: '',
       topAction: 'back'
     })}
     <section class="settings-group glass-card">

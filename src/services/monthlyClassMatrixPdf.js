@@ -3,13 +3,9 @@
  */
 import html2pdf from 'html2pdf.js';
 import { jsPDF } from 'jspdf';
-import {
-  SCHOOL_LOGO_SRC,
-  SCHOOL_NAME_TH,
-  SCHOOL_TAGLINE_TH
-} from '../config/schoolBranding.js';
 import { statusLabel, t } from '../i18n/index.js';
-import { buildAttendanceClassKey, queryAttendanceInRangeForSession } from './attendanceService.js';
+import { buildPdfMatrixStyleHeaderHtml, escapePdfHtml } from './pdfDocumentHeader.js';
+import { queryAttendanceInRangeForSession } from './attendanceService.js';
 import { fetchStudentsByClass, studentFullName } from './studentsService.js';
 import { queryClassPointsInRange } from './studentPointsService.js';
 import { findHomeroomTeachersForClass } from './homeroomTeachers.js';
@@ -66,11 +62,7 @@ function formatThaiMonthYear(yearMonth) {
 
 /** @param {string} s */
 function escapeHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return escapePdfHtml(s);
 }
 
 /** จำนวนนักเรียนต่อหน้า — แต่ละ chunk render เป็น PDF 1 หน้า */
@@ -117,6 +109,7 @@ function buildColgroup(dayCount) {
 }
 
 /**
+ * หัวกระดาษตารางรายเดือน — กลางหน้า + โลโก้ + สีม่วง (ห้ามใช้หัวแบบชิดซ้าย)
  * @param {{
  *   monthLabel: string,
  *   classKey: string,
@@ -124,21 +117,20 @@ function buildColgroup(dayCount) {
  * }} meta
  */
 function renderMatrixSchoolHeader(meta) {
-  return `<header class="pdf-matrix__header">
-      <div class="pdf-matrix__brand">
-        <img src="${SCHOOL_LOGO_SRC}" alt="" width="56" height="56" crossorigin="anonymous" />
-        <div class="pdf-matrix__brand-text">
-          <h1>${escapeHtml(SCHOOL_NAME_TH)}</h1>
-          <p>${escapeHtml(SCHOOL_TAGLINE_TH)}</p>
-        </div>
-      </div>
-      <h2>${escapeHtml(t('pdf.matrixTitle'))}</h2>
-      <p class="pdf-matrix__meta">
-        ${escapeHtml(t('pdf.matrixMonth'))}: <strong>${escapeHtml(meta.monthLabel)}</strong>
-        &nbsp;·&nbsp; ${escapeHtml(t('common.class'))}: <strong>${escapeHtml(meta.classKey)}</strong>
-        &nbsp;·&nbsp; ${escapeHtml(t('pdf.matrixHomeroom'))}: <strong>${escapeHtml(meta.homeroomLine)}</strong>
-      </p>
-    </header>`;
+  return buildPdfMatrixStyleHeaderHtml({
+    title: t('pdf.matrixTitle'),
+    metaLines: [
+      { label: t('pdf.matrixMonth'), value: meta.monthLabel },
+      { label: t('common.class'), value: meta.classKey },
+      { label: t('pdf.matrixHomeroom'), value: meta.homeroomLine }
+    ],
+    logoSize: 56,
+    nameSize: 18,
+    tagSize: 11,
+    titleSize: 15,
+    metaSize: 11,
+    marginBottom: 10
+  });
 }
 
 /**
@@ -166,8 +158,10 @@ function renderMatrixTableHead(dayColumns) {
 /**
  * @param {object} row
  * @param {{ dateKey: string, isWeekend: boolean }[]} dayColumns
+ * @param {number} rowIndex
  */
-function renderMatrixBodyRow(row, dayColumns) {
+function renderMatrixBodyRow(row, dayColumns, rowIndex = 0) {
+  const alt = rowIndex % 2 === 1 ? ' pdf-matrix__row--alt' : '';
   const dayCells = dayColumns
     .map((col) => {
       const cls = col.isWeekend ? 'pdf-matrix__day pdf-matrix__day--weekend' : 'pdf-matrix__day';
@@ -181,7 +175,7 @@ function renderMatrixBodyRow(row, dayColumns) {
     })
     .join('');
 
-  return `<tr class="pdf-matrix__row">
+  return `<tr class="pdf-matrix__row${alt}">
         <td class="pdf-matrix__col-name">${escapeHtml(row.name)}</td>
         ${dayCells}
         <td class="pdf-matrix__col-summary">${row.presentPercent}%</td>
@@ -201,15 +195,6 @@ function renderMatrixFooter(legend, exportedAt) {
 const MATRIX_PDF_STYLES = `
   .pdf-matrix{font-family:'Sarabun',Tahoma,sans-serif;color:#1a1a2e;width:100%;}
   .pdf-matrix-page{box-sizing:border-box;padding:8px 6px 10px;}
-  .pdf-matrix__header{text-align:center;margin-bottom:10px;border-bottom:2px solid #7C4DFF;padding-bottom:8px;}
-  .pdf-matrix__brand{display:flex;align-items:center;justify-content:center;gap:12px;}
-  .pdf-matrix__brand img{border-radius:8px;flex-shrink:0;}
-  .pdf-matrix__brand-text{text-align:left;}
-  .pdf-matrix__brand-text h1{margin:0;font-size:18px;font-weight:700;color:#7C4DFF;line-height:1.2;}
-  .pdf-matrix__brand-text p{margin:3px 0 0;font-size:11px;color:#444;}
-  .pdf-matrix__header h2{margin:8px 0 4px;font-size:15px;font-weight:700;line-height:1.25;}
-  .pdf-matrix__meta{margin:0;font-size:11px;line-height:1.5;word-wrap:break-word;}
-  .pdf-matrix__meta strong{font-weight:700;}
   .pdf-matrix__table{width:100%;border-collapse:collapse;table-layout:fixed;}
   .pdf-matrix__head-row{background:#ede9fe;}
   .pdf-matrix__col-name{border:1px solid #999;padding:3px 4px;text-align:left;font-size:7pt;line-height:1.25;word-wrap:break-word;overflow-wrap:break-word;vertical-align:middle;}
@@ -217,6 +202,7 @@ const MATRIX_PDF_STYLES = `
   .pdf-matrix__day--weekend{background:#ececec;}
   .pdf-matrix__col-summary{border:1px solid #999;padding:2px 1px;text-align:center;font-size:6pt;line-height:1.15;word-wrap:break-word;overflow-wrap:break-word;vertical-align:middle;}
   .pdf-matrix__row{page-break-inside:avoid;break-inside:avoid;}
+  .pdf-matrix__row--alt{background:#f7f7f7;}
   .pdf-matrix__score{font-size:7pt;font-weight:600;}
   .pdf-matrix__footer{margin-top:6px;}
   .pdf-matrix__footer p{margin:0 0 2px;font-size:7pt;color:#444;line-height:1.35;}
@@ -236,7 +222,7 @@ const MATRIX_PDF_STYLES = `
 function buildMatrixPageHtml(parts) {
   const { chunk, headerMeta, dayColumns, colgroup, tableHead, footer } = parts;
   const bodyRows =
-    chunk.map((row) => renderMatrixBodyRow(row, dayColumns)).join('') ||
+    chunk.map((row, i) => renderMatrixBodyRow(row, dayColumns, i)).join('') ||
     `<tr><td colspan="${dayColumns.length + 4}">${escapeHtml(t('history.empty'))}</td></tr>`;
 
   return `<div class="pdf-matrix"><style>${MATRIX_PDF_STYLES}</style>

@@ -1,4 +1,5 @@
 import { translations } from './translations.js';
+import { ATTENDANCE_UNCHECKED, normalizeAttendanceStatus } from '../data/attendanceStatuses.js';
 
 export const LANGUAGE_STORAGE_KEY = 'student-check-language';
 
@@ -59,12 +60,11 @@ export function t(key, params) {
   return text;
 }
 
-import { normalizeAttendanceStatus } from '../data/attendanceStatuses.js';
-
 /**
  * @param {string} statusKey
  */
 export function statusLabel(statusKey) {
+  if (statusKey === ATTENDANCE_UNCHECKED) return t('status.unchecked');
   const key = normalizeAttendanceStatus(statusKey);
   const label = t(`status.${key}`);
   if (label !== `status.${key}`) return label;
