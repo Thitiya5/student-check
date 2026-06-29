@@ -21,6 +21,8 @@ const STUDENTS_SHEET = 'Students';
 const ATTENDANCE_SHEET = 'Attendance';
 const TEACHERS_SHEET = 'TEACHERS';
 const PIN_SALT = 'student-check-2026';
+/** Bump when deploying Code.gs — verify via action=ping */
+const GAS_CODE_VERSION = '2026-06-20-rowwrite';
 
 /** Map logical field → possible header labels in row 1 */
 const ATTENDANCE_HEADERS = {
@@ -91,7 +93,7 @@ function doGet(e) {
       case 'ping':
         Logger.log('doGet: ping');
         return jsonOut(
-          ok_({ message: 'Student attendance API ready', actions: listActions_() })
+          ok_({ message: 'Student attendance API ready', gas_version: GAS_CODE_VERSION, actions: listActions_() })
         );
 
       case 'getTeachers': {
@@ -254,7 +256,7 @@ function routeAction_(action, params) {
       return ok_({ saved: saved, date: date, type: type, term: term });
     }
     case 'ping':
-      return ok_({ message: 'Student attendance API ready', actions: listActions_() });
+      return ok_({ message: 'Student attendance API ready', gas_version: GAS_CODE_VERSION, actions: listActions_() });
     default:
       return fail_('Unknown action: ' + action);
   }
@@ -506,7 +508,7 @@ function changeTeacherCredentials_(usernameInput, currentPin, newPin, newUsernam
   if (nextUsername) vals[targetRow][iUsername] = nextUsername;
   if (iTeacherPin >= 0) vals[targetRow][iTeacherPin] = '';
 
-  sh.getRange(2, 1, vals.length - 1, vals[0].length).setValues(vals.slice(1));
+  writeSheetRowAt_(sh, targetRow + 1, vals[targetRow], sheetColCountFromVals_(vals));
   return ok_({ success: true });
 }
 
@@ -561,7 +563,7 @@ function adminResetTeacherPin_(params) {
   if (iMustChange >= 0) vals[targetRow][iMustChange] = true;
   if (iTeacherPin >= 0) vals[targetRow][iTeacherPin] = '';
 
-  sh.getRange(2, 1, vals.length - 1, vals[0].length).setValues(vals.slice(1));
+  writeSheetRowAt_(sh, targetRow + 1, vals[targetRow], sheetColCountFromVals_(vals));
 
   var teacherName = iName >= 0 ? String(vals[targetRow][iName] || '').trim() : '';
   return ok_({
@@ -644,6 +646,75 @@ function buildSheetColLookup_(headerRow) {
       return -1;
     }
   };
+}
+
+/**
+ * Write sheet body rows (row 1 = header in vals[0], data from vals[1]).
+ * Prefer writeSheetRowAt_ / writeStudentRowsInClass_ for admin edits on large sheets.
+ */
+function columnToLetter_(col) {
+  var letter = '';
+  while (col > 0) {
+    var mod = (col - 1) % 26;
+    letter = String.fromCharCode(65 + mod) + letter;
+    col = Math.floor((col - 1) / 26);
+  }
+  return letter || 'A';
+}
+
+function sheetColCountFromVals_(vals) {
+  var cols = vals[0] ? vals[0].length : 0;
+  var i;
+  for (i = 1; i < vals.length; i++) {
+    if (vals[i] && vals[i].length > cols) cols = vals[i].length;
+  }
+  return Math.max(cols, 1);
+}
+
+function normalizeRowWidth_(row, width) {
+  var out = row && row.slice ? row.slice() : [];
+  while (out.length < width) out.push('');
+  if (out.length > width) out.length = width;
+  return out;
+}
+
+function bodyRowsFromVals_(vals) {
+  var numCols = sheetColCountFromVals_(vals);
+  var dataRows = [];
+  var r;
+  for (r = 1; r < vals.length; r++) {
+    dataRows.push(normalizeRowWidth_(vals[r], numCols));
+  }
+  return { rows: dataRows, numCols: numCols };
+}
+
+/** @param {number} sheetRow1 1-based sheet row */
+function writeSheetRowAt_(sh, sheetRow1, row, numCols) {
+  sh.getRange(sheetRow1, 1, 1, numCols).setValues([normalizeRowWidth_(row, numCols)]);
+}
+
+function writeSheetBodyRows_(sh, vals) {
+  if (!vals || vals.length < 2) return;
+  var packed = bodyRowsFromVals_(vals);
+  var dataRows = packed.rows;
+  var numCols = packed.numCols;
+  var numRows = dataRows.length;
+  if (numRows < 1) return;
+  var endRow = numRows + 1;
+  sh.getRange('A2:' + columnToLetter_(numCols) + endRow).setValues(dataRows);
+  var lastRow = sh.getLastRow();
+  if (lastRow > endRow) {
+    sh.getRange(endRow + 1, 1, lastRow - endRow, Math.max(sh.getLastColumn(), numCols)).clearContent();
+  }
+}
+
+function writeStudentRowsInClass_(sh, vals, lookup, level, room) {
+  var numCols = sheetColCountFromVals_(vals);
+  var r;
+  for (r = 1; r < vals.length; r++) {
+    if (!studentSheetRowInClass_(vals[r], lookup, level, room)) continue;
+    writeSheetRowAt_(sh, r + 1, vals[r], numCols);
+  }
 }
 
 /**
@@ -782,7 +853,7 @@ function adminUpdateTeacher_(params) {
     vals[targetRow][lookup.col('ACTIVE')] = active;
   }
 
-  sh.getRange(2, 1, vals.length - 1, vals[0].length).setValues(vals.slice(1));
+  writeSheetRowAt_(sh, targetRow + 1, vals[targetRow], sheetColCountFromVals_(vals));
   var updated = readTeachers_().find(function (t) {
     return String(t.USERNAME || '').trim().toLowerCase() === username;
   });
@@ -897,10 +968,7 @@ function setStudentNumberOnRow_(row, lookup, num) {
 }
 
 function writeStudentSheetRows_(sh, vals) {
-  if (!vals || vals.length < 2) return;
-  var numRows = vals.length - 1;
-  var numCols = vals[0].length;
-  sh.getRange(2, 1, numRows, numCols).setValues(vals.slice(1));
+  writeSheetBodyRows_(sh, vals);
 }
 
 /** หาตำแหน่งแทรกแถวในชีต (index ใน vals) หลังขยับเลขที่แล้ว */
@@ -1072,12 +1140,16 @@ function adminCreateStudent_(params) {
 
   var newRow = studentRowFromFields_(lookup.header, fields);
   var insertAt = findStudentInsertRowIndex_(vals, lookup, level, room, newNum);
-  if (insertAt >= vals.length) {
-    vals.push(newRow);
-  } else {
-    vals.splice(insertAt, 0, newRow);
+  var numCols = sheetColCountFromVals_(vals);
+  if (newNum != null && shifted > 0) {
+    writeStudentRowsInClass_(sh, vals, lookup, level, room);
   }
-  writeStudentSheetRows_(sh, vals);
+  if (insertAt >= vals.length) {
+    sh.appendRow(normalizeRowWidth_(newRow, numCols));
+  } else {
+    sh.insertRowsBefore(insertAt + 1, 1);
+    writeSheetRowAt_(sh, insertAt + 1, newRow, numCols);
+  }
 
   var list = readStudents_('', '');
   var created = null;
@@ -1145,7 +1217,21 @@ function adminUpdateStudent_(params) {
       found.vals[found.rowIndex][c] = newRow[c];
     }
   }
-  writeStudentSheetRows_(sh, found.vals);
+
+  var classChanged = oldLevel !== fields.level || oldRoom !== fields.room;
+  var numCols = sheetColCountFromVals_(found.vals);
+  if (shifted > 0 || classChanged) {
+    if (classChanged) {
+      if (oldLevel && oldRoom) {
+        writeStudentRowsInClass_(sh, found.vals, lookup, oldLevel, oldRoom);
+      }
+      writeStudentRowsInClass_(sh, found.vals, lookup, fields.level, fields.room);
+    } else {
+      writeStudentRowsInClass_(sh, found.vals, lookup, fields.level, fields.room);
+    }
+  } else {
+    writeSheetRowAt_(sh, found.rowIndex + 1, found.vals[found.rowIndex], numCols);
+  }
 
   var list = readStudents_('', '');
   var updated = null;
@@ -1180,9 +1266,10 @@ function adminDeleteStudent_(params) {
   if (oldNum != null && level && room) {
     shifted = shiftStudentNumbersOnRemove_(found.vals, lookup, level, room, oldNum, studentId);
   }
-
-  found.vals.splice(found.rowIndex, 1);
-  writeStudentSheetRows_(sh, found.vals);
+  if (shifted > 0 && level && room) {
+    writeStudentRowsInClass_(sh, found.vals, lookup, level, room);
+  }
+  sh.deleteRow(found.rowIndex + 1);
   return ok_({ deleted: true, student_id: studentId, numbers_shifted: shifted });
 }
 

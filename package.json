@@ -9,8 +9,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "docs:screenshots": "node scripts/capture-manual-screenshots.mjs",
+    "docs:embed": "node scripts/embed-manual-images.mjs",
+    "docs:preview": "node scripts/build-manual-preview-html.mjs",
+    "docs:view": "node scripts/build-manual-preview-html.mjs && node scripts/serve-manuals.mjs",
     "docs:pdf": "node scripts/generate-manuals-pdf.mjs",
-    "docs:pdf:fast": "node scripts/generate-manuals-pdf.mjs --no-screenshots"
+    "docs:pdf:fast": "node scripts/generate-manuals-pdf.mjs --no-screenshots",
+    "docs:handover": "node scripts/generate-manuals-pdf.mjs && node scripts/build-handover-package.mjs"
   },
   "devDependencies": {
     "marked": "^15.0.0",
