@@ -1,0 +1,398 @@
+/* Sprint 3.5 — Global responsive & UI polish (CSS only)
+ * Purple branding preserved via --brand-* tokens in tokens.css */
+
+@media (max-width: 639px) {
+  .exec-filters.mobile-filter-collapse > .exec-section-title {
+    display: none;
+  }
+}
+
+@media (min-width: 640px) {
+  .exec-filters.mobile-filter-collapse > .exec-section-title {
+    display: block;
+  }
+}
+
+/* —— Desktop: wider readable canvas —— */
+@media (min-width: 900px) {
+  .page-content--dashboard,
+  .page-content--reports,
+  .page-content--history,
+  .page-content--executive,
+  .page-content--student-profile,
+  .page-content--settings {
+    max-width: 920px;
+  }
+
+  .page-content--check {
+    max-width: 640px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .page-content--dashboard,
+  .page-content--reports,
+  .page-content--executive {
+    max-width: 1040px;
+  }
+}
+
+/* —— Tablet: two-column card grids —— */
+@media (min-width: 640px) and (max-width: 899px) {
+  .dash-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dash-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .exec-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .report-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* —— Mobile: minimum readable type —— */
+@media (max-width: 639px) {
+  :root {
+    --type-label-size: 0.8125rem;
+    --type-value-size: 0.875rem;
+  }
+
+  .page-header h1 {
+    font-size: clamp(1.15rem, 4.5vw, 1.35rem);
+  }
+
+  .page-header p,
+  .filter-panel .field span,
+  .reports-toolbar__block-title {
+    font-size: max(0.8rem, var(--type-label-size));
+  }
+
+  .input-field,
+  .select-field,
+  .button-primary,
+  .button-secondary {
+    font-size: max(0.875rem, 16px);
+    min-height: 2.75rem;
+  }
+
+  .report-stat__label {
+    font-size: max(0.72rem, 0.7rem);
+  }
+
+  .report-stat__value {
+    font-size: clamp(1rem, 4vw, 1.15rem);
+  }
+}
+
+/* —— Collapsible filters (mobile) —— */
+.mobile-filter-collapse {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mobile-filter-collapse__summary {
+  display: none;
+  list-style: none;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--brand-bg-soft);
+  border: 1px solid var(--brand-card-border);
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--brand-primary);
+  min-height: 2.75rem;
+}
+
+.mobile-filter-collapse__summary::-webkit-details-marker {
+  display: none;
+}
+
+.mobile-filter-collapse__summary::after {
+  content: '▾';
+  font-size: 0.85rem;
+  opacity: 0.75;
+  transition: transform 0.2s ease;
+}
+
+.mobile-filter-collapse[open] .mobile-filter-collapse__summary::after {
+  transform: rotate(180deg);
+}
+
+.mobile-filter-collapse__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+@media (max-width: 639px) {
+  .filter-panel.mobile-filter-collapse,
+  .exec-filters.mobile-filter-collapse {
+    padding: 0.85rem;
+  }
+
+  .mobile-filter-collapse__summary {
+    display: flex;
+  }
+
+  .mobile-filter-collapse:not([open]) .mobile-filter-collapse__body {
+    display: none;
+  }
+}
+
+@media (min-width: 640px) {
+  .mobile-filter-collapse__summary {
+    display: none !important;
+  }
+
+  .mobile-filter-collapse__body {
+    display: flex !important;
+  }
+}
+
+/* Executive comparison table → cards on mobile */
+@media (max-width: 639px) {
+  .exec-table-wrap--cards {
+    overflow-x: visible;
+  }
+
+  .exec-table--cards {
+    border: 0;
+    font-size: 0.84rem;
+  }
+
+  .exec-table--cards thead {
+    display: none;
+  }
+
+  .exec-table--cards tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .exec-table--cards tr {
+    display: block;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid var(--brand-card-border);
+    border-radius: var(--radius-sm);
+    background: var(--brand-bg-soft);
+    box-shadow: var(--shadow-chip);
+  }
+
+  .exec-table--cards td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+    border: 0;
+    text-align: right;
+  }
+
+  .exec-table--cards td:first-child {
+    display: block;
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-align: left;
+    padding-bottom: 0.45rem;
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid var(--brand-card-border);
+  }
+
+  .exec-table--cards td:not(:first-child)::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-align: left;
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* —— Bottom navigation —— */
+.bottom-nav--six {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+@media (max-width: 480px) {
+  .bottom-nav--five .bottom-nav-button,
+  .bottom-nav--six .bottom-nav-button {
+    padding: 0.5rem 0.1rem;
+    min-height: 3.25rem;
+  }
+
+  .bottom-nav--five .bottom-nav-label,
+  .bottom-nav--six .bottom-nav-label {
+    font-size: max(0.62rem, 0.58rem);
+    line-height: 1.2;
+  }
+
+  .bottom-nav-button {
+    min-height: 3.1rem;
+  }
+
+  .bottom-nav-icon {
+    font-size: 1.05rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .bottom-nav--six .bottom-nav-label {
+    font-size: 0.55rem;
+  }
+}
+
+/* —— Charts: reduce height on small screens —— */
+@media (max-width: 639px) {
+  .chart-col__bar-wrap,
+  .exec-chart-col__bar-wrap {
+    height: 88px;
+  }
+
+  .chart-columns,
+  .exec-chart-cols {
+    min-height: 108px;
+  }
+
+  .exec-completion__grid {
+    gap: 0.55rem;
+  }
+
+  .exec-completion-card {
+    padding: 0.8rem 0.85rem;
+  }
+}
+
+/* —— Dashboard density —— */
+@media (max-width: 639px) {
+  .dashboard-home {
+    gap: 0.85rem;
+  }
+
+  .dash-header {
+    padding: 0.9rem 0.95rem 1rem;
+  }
+
+  .dash-section__title {
+    font-size: 0.92rem;
+  }
+}
+
+/* —— Attendance: tap targets —— */
+@media (max-width: 639px) {
+  .attendance-status-btn {
+    min-height: 2.35rem;
+    font-size: max(0.68rem, 0.65rem);
+    padding: 0.45rem 0.25rem;
+  }
+
+  .attendance-save-btn {
+    min-height: 2.85rem;
+    font-size: 0.95rem;
+  }
+
+  .attendance-student-card {
+    padding: 0.75rem 0.8rem;
+  }
+}
+
+/* —— Settings —— */
+@media (max-width: 639px) {
+  .settings-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    padding: 0.9rem 1rem;
+    gap: 0.5rem;
+  }
+
+  .settings-row__label {
+    flex: 1 1 100%;
+  }
+
+  .settings-hero h1 {
+    font-size: clamp(1.2rem, 5vw, 1.45rem);
+  }
+}
+
+/* —— Student profile —— */
+@media (max-width: 639px) {
+  .profile-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    padding-bottom: 0.15rem;
+  }
+
+  .profile-tabs__btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    min-height: 2.5rem;
+    font-size: 0.82rem;
+  }
+
+  .profile-hero__name {
+    font-size: clamp(1.05rem, 4.5vw, 1.25rem);
+    overflow-wrap: anywhere;
+  }
+}
+
+/* —— Dark mode readability —— */
+[data-theme='dark'] .glass-card,
+[data-theme='dark'] .filter-panel,
+[data-theme='dark'] .reports-toolbar {
+  border-color: var(--brand-card-border);
+}
+
+[data-theme='dark'] .exec-table--cards tr {
+  background: rgba(124, 77, 255, 0.1);
+}
+
+[data-theme='dark'] .mobile-filter-collapse__summary {
+  background: rgba(124, 77, 255, 0.16);
+  color: var(--brand-primary-light);
+}
+
+[data-theme='dark'] .bottom-nav {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme='dark'] .text-secondary,
+[data-theme='dark'] .exec-header__meta-value--muted {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+/* —— Prevent overlap / overflow —— */
+.page-content,
+.reports-page,
+.dashboard-home,
+.executive-dashboard-page {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.segmented,
+.report-tabs,
+.reports-toolbar__view {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.reports-toolbar__view button,
+.segmented button {
+  min-height: 2.5rem;
+}
