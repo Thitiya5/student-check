@@ -1,7 +1,7 @@
 # เอกสารระบบทางเทคนิค — Student Check
 
 **โรงเรียนยางตลาดวิทยาคาร**  
-**เวอร์ชันแอป:** 2.0.0  
+**เวอร์ชันแอป:** 3.1.0  
 **Firebase Project ID:** `famous-augury-495905-c3`  
 **Hosting URL:** https://student-check-th.web.app
 
@@ -36,11 +36,13 @@ Browser (PWA)
 
 | โมดูล | ไฟล์หลัก | หน้าที่ |
 |-------|----------|--------|
-| Routing | `src/main.js` | Hash router, auth guard |
+| Routing | `src/main.js`, `src/config/routeGuards.js` | Hash router, auth guard |
+| App state | `src/data/appState.js` | localStorage (ห้อง/วันที่ที่เลือก) |
 | Auth | `src/services/teachersService.js`, `teacherAuth.js` | Session, สิทธิ์ห้อง |
 | Roster | `src/services/studentsService.js`, `googleAppsScript.js` | โหลดนักเรียนจาก GAS |
 | Attendance | `src/services/attendanceService.js` | CRUD Firestore `attendance` |
-| Points | `src/services/studentPointsService.js` | คะแนนพฤติกรรม |
+| Points (raw) | `src/services/studentPointsService.js` | บันทึก/ sync คะแนนดิบใน Firestore |
+| Points (reports) | `src/services/studentScoreService.js` | คะแนนรวม, risk, รายงาน dashboard |
 | Settings | `src/services/appSettingsService.js` | Firestore `app_settings` |
 | Offline | `src/services/offlineDb.js`, `offlineSync.js` | IndexedDB + sync queue |
 | i18n | `src/i18n/translations.js` | ไทย / English |
@@ -84,7 +86,7 @@ Config ฝังใน `src/services/firebaseClient.js`:
 
 ## Google Apps Script
 
-- ไฟล์อ้างอิง: `gas-sample/Code.gs`
+- ไฟล์อ้างอิง: `gas-sample/Code.gs` (ดู `gas-sample/README.md` วิธี deploy)
 - Deploy เป็น Web App (POST/GET JSON)
 - Script properties: `SHEET_ID`, `gasSecret` (optional)
 - PIN hash salt: `student-check-2026`

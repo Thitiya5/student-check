@@ -1,3 +1,7 @@
+/* app-pages.css — shared page UI
+ * Pages: history.js, students.js, reports.js, settings.js, menu.js, changePin.js
+ * Also: glass-card, page-header, modals used across multiple screens */
+
 /* Shared glass UI for dashboard, history, students, reports */
 
 .glass-card {

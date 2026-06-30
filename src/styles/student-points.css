@@ -1,3 +1,7 @@
+/* student-points.css — behavior points, reports, admin roster cards
+ * Pages: behavior.js, pointsReport.js, disciplineRecords.js,
+ *         adminStudents.js, adminTeachers.js, admin.js */
+
 .admin-quick-actions {
   padding: 0.85rem 1rem;
   margin-bottom: 0.75rem;

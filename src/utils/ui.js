@@ -34,3 +34,12 @@ export function renderError(message, hint = '', retryButtonId = 'uiRetryBtn') {
 export function statusBadgeClass(status) {
   return `status-badge status-badge--${String(status || 'present').toLowerCase()}`;
 }
+
+/** Floating toast — used from main.js and passed as `onToast` to pages. */
+export function showToast(text) {
+  const el = document.createElement('div');
+  el.className = 'toast-message';
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2800);
+}

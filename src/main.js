@@ -6,13 +6,14 @@ import { updateDocumentBranding } from './config/schoolBranding.js';
 import { renderAppBrandStrip } from './components/schoolLogo.js';
 import { initTheme } from './services/theme.js';
 import { renderLoginPage } from './pages/login.js';
-import { renderLoading } from './utils/ui.js';
+import { renderLoading, showToast } from './utils/ui.js';
 import { escapeHtml } from './utils/html.js';
 import { initAppSettings } from './services/appSettingsService.js';
 import { syncClassPointTransactions, enrichStudentsForPointSync } from './services/studentPointsService.js';
 import { renderBottomNav } from './components/navbar.js';
 import { openConfirmModal } from './components/confirmModal.js';
-import { loadAppState, saveAppState, getTodayDateKey, getDefaultAppState, STORAGE_KEY } from './data/mock.js';
+import { loadAppState, saveAppState, getTodayDateKey, getDefaultAppState, STORAGE_KEY } from './data/appState.js';
+import { getRouteAccessDenied } from './config/routeGuards.js';
 import { isSchoolDay } from './utils/dateIso.js';
 import { syncStateToToday, startDayRolloverWatch } from './services/appDay.js';
 import {
@@ -36,12 +37,9 @@ import {
   loadTeacherAuthSession,
   canAccessLevelRoom,
   isAdminSession,
-  canManageBehaviorSession,
   canViewPointsReportSession,
-  canReturnDisciplinePointsSession,
   saveTeacherAuthSession
 } from './services/teacherAuth.js';
-import { canViewDisciplineReportSession } from './services/disciplineReportService.js';
 import { resolveTeacherLogin, refreshTeacherSessionFromSheet, changeTeacherPin } from './services/teachersService.js';
 import { normalizeAttendanceStatus, CHECK_DEFAULT_STATUS } from './data/attendanceStatuses.js';
 import { disciplineEntryToFirestore } from './data/disciplineChecks.js';
@@ -338,14 +336,6 @@ function persistClassSelection(level, room, { classConfirmed } = {}) {
   saveAppState(state);
 }
 
-function showToast(text) {
-  const el = document.createElement('div');
-  el.className = 'toast-message';
-  el.textContent = text;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 2800);
-}
-
 async function loadClassAttendance(level, room, dateKey = getTodayDateKey()) {
   const classKey = buildAttendanceClassKey(level, room);
   const records = await getAttendanceForClassOnDate(classKey, dateKey);
@@ -631,6 +621,12 @@ async function renderRoutePage(pageContent, currentRoute, pageCtx) {
       renderSettingsAdminPage(pageContent, pageCtx);
       break;
     }
+    case '/executive': {
+      pageContent.classList.add('page-content--executive');
+      const { renderExecutiveDashboardPage } = await import('./pages/executive/executiveDashboard.js');
+      renderExecutiveDashboardPage(pageContent, pageCtx);
+      break;
+    }
     default:
       pageContent.innerHTML = `<div class="ui-empty"><p class="ui-empty__title">${t('common.notFound')}</p></div>`;
   }
@@ -661,64 +657,14 @@ async function renderAppAsync() {
     return;
   }
 
-  if (loggedIn && currentRoute === '/change-pin' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('admin.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/admin' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('admin.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/inspection' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('admin.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/admin-discipline' && !canReturnDisciplinePointsSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('disciplineRecords.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/settings-admin' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('admin.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/admin-teachers' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('admin.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/admin-students' && !isAdminSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('admin.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/behavior' && !canManageBehaviorSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('behavior.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/points-report' && !canViewPointsReportSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('pointsReport.denied'));
-    window.location.hash = '/dashboard';
-    return;
-  }
-
-  if (loggedIn && currentRoute === '/discipline-report' && !canViewDisciplineReportSession(state.teacherAuth || loadTeacherAuthSession())) {
-    showToast(t('disciplineReport.denied'));
-    window.location.hash = '/dashboard';
-    return;
+  if (loggedIn) {
+    const session = state.teacherAuth || loadTeacherAuthSession();
+    const denied = getRouteAccessDenied(currentRoute, session);
+    if (denied) {
+      showToast(t(denied.messageKey));
+      window.location.hash = '/dashboard';
+      return;
+    }
   }
 
   authRedirectPending = false;
@@ -726,11 +672,20 @@ async function renderAppAsync() {
   shell.className = 'page-shell';
 
   const pageContent = document.createElement('main');
+  const routePageClass = {
+    '/dashboard': 'page-content--dashboard',
+    '/check': 'page-content--check',
+    '/history': 'page-content--history',
+    '/reports': 'page-content--reports',
+    '/student-profile': 'page-content--student-profile',
+    '/settings': 'page-content--settings',
+    '/executive': 'page-content--executive'
+  }[currentRoute];
   pageContent.className = [
     'page-content',
     currentRoute === '/check' || currentRoute === '/behavior' ? 'has-fixed-save' : '',
     currentRoute === '/login' ? 'page-content--login' : '',
-    currentRoute === '/dashboard' ? 'page-content--dashboard' : ''
+    routePageClass || ''
   ]
     .filter(Boolean)
     .join(' ');
@@ -766,7 +721,8 @@ async function renderAppAsync() {
   const authSession = state.teacherAuth || loadTeacherAuthSession();
   const navbar = document.createElement('div');
   navbar.innerHTML = renderBottomNav(currentRoute, {
-    showPointsReport: canViewPointsReportSession(authSession)
+    showPointsReport: canViewPointsReportSession(authSession),
+    showExecutive: isAdminSession(authSession)
   });
   navbar.addEventListener('click', (e) => {
     const button = e.target.closest('.bottom-nav-button');

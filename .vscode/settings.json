@@ -1,3 +1,5 @@
 {
-  "workbench.browser.openLocalhostLinks": true
+  "workbench.browser.openLocalhostLinks": true,
+  "markdown.preview.security.level": "allowInsecureContent",
+  "markdown.preview.breaks": true
 }

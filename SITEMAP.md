@@ -1,8 +1,9 @@
 # Student Check — Application Sitemap
 
 **Project:** ระบบเช็คชื่อนักเรียน · โรงเรียนยางตลาดวิทยาคาร  
-**Version:** 3.0.1  
+**Version:** 3.1.0  
 **Router:** Hash-based (`window.location.hash`) via `src/services/navigation.js` + `src/main.js`  
+**Route guards:** `src/config/routeGuards.js` (checked in `main.js` before render)  
 **Shell:** `#app` → `.page-shell` → offline bar + `.page-content` + bottom nav (logged-in only)
 
 ---
@@ -25,6 +26,11 @@
 | `#/admin-students` | `adminStudents.js` | จัดการนักเรียน | Required | Admin only |
 | `#/inspection` | `inspection.js` | ตรวจระเบียบประจำเดือน | Required | Admin only |
 | `#/settings-admin` | `settingsAdmin.js` | ตั้งค่าระบบ (ผู้ดูแล) | Required | Admin only |
+| `#/menu` | `menu.js` | เมนูทั้งหมด | Required | — |
+| `#/behavior` | `behavior.js` | คะแนนพฤติกรรม | Required | Behavior manager |
+| `#/points-report` | `pointsReport.js` | รายงานคะแนน | Required | Points report role |
+| `#/discipline-report` | `disciplineReport.js` | รายงานระเบียบ | Required | Discipline report role |
+| `#/admin-discipline` | `disciplineRecords.js` | คืนคะแนนระเบียบ | Required | Discipline return role |
 | `#/change-pin` | `changePin.js` | เปลี่ยน PIN | Required | Admin only |
 | *(unknown path)* | inline in `main.js` | ไม่พบหน้า | Any | `ui-empty` |
 

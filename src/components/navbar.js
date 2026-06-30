@@ -21,9 +21,12 @@ export const MENU_SECONDARY_ROUTES = new Set([
 
 /**
  * @param {string} currentRoute
- * @param {{ showPointsReport?: boolean }} [opts]
+ * @param {{ showPointsReport?: boolean, showExecutive?: boolean }} [opts]
  */
-export function renderBottomNav(currentRoute, { showPointsReport = false } = {}) {
+export function renderBottomNav(
+  currentRoute,
+  { showPointsReport = false, showExecutive = false } = {}
+) {
   const routePath = currentRoute.split('?')[0];
   const items = [
     { labelKey: 'nav.home', icon: '◉', target: '/dashboard' },
@@ -32,11 +35,15 @@ export function renderBottomNav(currentRoute, { showPointsReport = false } = {})
       ? [{ labelKey: 'nav.pointsReport', icon: '▤', target: '/points-report' }]
       : []),
     { labelKey: 'nav.reports', icon: '⌗', target: '/reports' },
+    ...(showExecutive
+      ? [{ labelKey: 'executive.nav', icon: '◈', target: '/executive' }]
+      : []),
     { labelKey: 'nav.menu', icon: '☰', target: '/menu', secondary: true }
   ];
 
   const count = items.length;
-  const navClass = count <= 4 ? 'bottom-nav--four' : 'bottom-nav--five';
+  const navClass =
+    count >= 6 ? 'bottom-nav--six' : count <= 4 ? 'bottom-nav--four' : 'bottom-nav--five';
 
   return `
     <div class="bottom-nav-wrap">

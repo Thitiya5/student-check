@@ -33,6 +33,14 @@ dev-dist/
 Thumbs.db
 *.sw?
 
+# Docs pipeline — generated locally (regenerate via npm run docs:*)
+*.debug.html
+*.preview.html
+docs-viewer.html
+manual-images/_verify-*.png
+StudentCheck_v*_Handover.zip
+test-handover.zip
+
 # IDE
 .idea/
 *.suo

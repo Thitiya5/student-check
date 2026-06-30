@@ -43,7 +43,9 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
     subtitle: '',
     topAction: 'back'
   })}
-  <section class="filter-panel glass-card">
+  <details class="filter-panel glass-card mobile-filter-collapse">
+    <summary class="mobile-filter-collapse__summary">${escapeHtml(t('common.filters'))}</summary>
+    <div class="mobile-filter-collapse__body">
     <div class="filter-grid">
       <label class="field"><span>${escapeHtml(t('common.date'))}</span><input type="date" id="histDate" class="input-field" value="${escapeHtml(filters.attendanceDate)}" /></label>
       <label class="field"><span>${escapeHtml(t('history.levelCol'))}</span><select id="histLevel" class="select-field"><option value="">${escapeHtml(t('common.all'))}</option></select></label>
@@ -51,7 +53,8 @@ export function renderHistoryPage(container, { state = {}, onToast, onLogout, on
       <label class="field" ${admin ? '' : 'hidden'}><span>${escapeHtml(t('common.teacher'))}</span><input id="histTeacher" class="input-field" placeholder="${escapeHtml(t('common.teacherName'))}" value="${escapeHtml(filters.teacherName)}" /></label>
     </div>
     <label class="field"><span>${escapeHtml(t('history.searchStudent'))}</span><input id="histSearch" class="input-field" placeholder="${escapeHtml(t('common.nameOrId'))}" /></label>
-  </section>
+    </div>
+  </details>
   <section id="historyList">${renderLoading(t('history.loading'))}</section>`;
 
   bindPageHeaderActions(container, {
