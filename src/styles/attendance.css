@@ -80,6 +80,14 @@
   color: var(--purple-700);
 }
 
+.check-roster-status {
+  margin: 0 0 8px;
+  padding: 0 0.15rem;
+  font-size: 0.8rem;
+  color: var(--text-muted, #666);
+  text-align: center;
+}
+
 .attendance-screen {
   display: flex;
   flex-direction: column;

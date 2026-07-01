@@ -39,6 +39,9 @@ import {
   fetchLevelOptions,
   fetchRoomOptions,
   fetchStudentsByClass,
+  peekStudentsByClass,
+  refreshStudentsByClassInBackground,
+  invalidateClassRosterCache,
   studentFullName
 } from '../services/studentsService.js';
 import {
@@ -119,6 +122,9 @@ export function renderCheckPage(container, ctx = {}) {
   let baselineDiscipline = {};
   let weekendHasSavedData = false;
   let weekendSavedCount = 0;
+  let rosterRefreshing = false;
+  /** @type {number|null} */
+  let rosterCacheAgeMs = null;
 
   if (singleClass && !hasDeepClass) {
     const parts = classKeyToParts(singleClass);
@@ -306,6 +312,114 @@ export function renderCheckPage(container, ctx = {}) {
     return isWeekendDate(dateKey);
   }
 
+  function rosterSignature(list) {
+    return list
+      .map((s) => `${s.student_id}:${s.first_name}:${s.last_name}:${s.number}`)
+      .sort()
+      .join('|');
+  }
+
+  async function applyAttendanceRecords(records) {
+    if (isOnline()) {
+      attendance = recordsToAttendanceMap(records);
+      discipline = recordsToDisciplineMap(records);
+      weekendHasSavedData = isWeekendCheck() && records.length > 0;
+      weekendSavedCount = records.length;
+      return;
+    }
+    const classKey = buildAttendanceClassKey(level, room);
+    const cached = await getCachedClassSession(classKey, dateKey);
+    attendance = cached?.attendance ?? {};
+    discipline = cached?.discipline ?? {};
+    weekendHasSavedData = isWeekendCheck() && Object.keys(attendance).length > 0;
+    weekendSavedCount = Object.keys(attendance).length;
+  }
+
+  function prepareStudentAttendanceState() {
+    const weekend = isWeekendCheck();
+    students.forEach((s) => {
+      const sid = String(s.student_id);
+      if (!weekend && !attendance[sid]) {
+        attendance[sid] = CHECK_DEFAULT_STATUS;
+      }
+      if (!discipline[sid]) discipline[sid] = emptyDisciplineEntry();
+      if (weekend) return;
+      if (normalizeAttendanceStatus(attendance[sid]) === 'absent') {
+        if (!discipline[sid].disciplineWaived) {
+          discipline[sid] = {
+            ...discipline[sid],
+            flags: resolveDisciplineFlagsForScoring('absent', dateKey, discipline[sid].flags)
+          };
+        }
+      } else {
+        const rules = getDisciplineChecks();
+        let flags = normalizeDisciplineFlags(discipline[sid].flags);
+        if (rules.length && flags.length === rules.length) {
+          flags = [];
+        }
+        discipline[sid] = { ...discipline[sid], flags };
+      }
+    });
+    baselineDiscipline = cloneDisciplineMap(discipline);
+  }
+
+  async function finishClassSession(classKey) {
+    dismissSaveResultBadge();
+    await cacheClassSession(classKey, dateKey, { attendance, discipline, students });
+    if (isOnline()) {
+      try {
+        const absentCount = await resyncPointsForLoadedClass();
+        if (absentCount > 0) {
+          onToast?.(t('check.pointsResynced', { count: absentCount }));
+        }
+      } catch (err) {
+        console.error('[check] point resync failed', err);
+        onToast?.(t('check.pointSyncFailed'));
+      }
+    }
+  }
+
+  function updateRosterStatusUi() {
+    const el = body?.querySelector('#checkRosterStatus');
+    const refreshBtn = body?.querySelector('#refreshRosterBtn');
+    if (el) {
+      if (rosterRefreshing) {
+        el.hidden = false;
+        el.textContent = t('check.rosterRefreshing');
+      } else {
+        el.hidden = true;
+        el.textContent = '';
+      }
+    }
+    if (refreshBtn instanceof HTMLButtonElement) {
+      refreshBtn.disabled = rosterRefreshing;
+    }
+  }
+
+  function startBackgroundRosterRefresh() {
+    if (!isOnline() || rosterRefreshing) return;
+    const prevSig = rosterSignature(students);
+    rosterRefreshing = true;
+    updateRosterStatusUi();
+    void refreshStudentsByClassInBackground(level, room)
+      .then((fresh) => {
+        rosterCacheAgeMs = peekStudentsByClass(level, room).cacheAgeMs;
+        if (rosterSignature(fresh) !== prevSig) {
+          students = fresh;
+          prepareStudentAttendanceState();
+          renderStudentsUI();
+          onToast?.(t('check.rosterRefreshed'));
+        }
+      })
+      .catch(() => {
+        onToast?.(t('check.rosterRefreshFailed'));
+      })
+      .finally(() => {
+        rosterRefreshing = false;
+        updateRosterStatusUi();
+      });
+  }
+
   function renderStudentsUI() {
     if (!body) return;
     const weekend = isWeekendCheck();
@@ -324,6 +438,7 @@ export function renderCheckPage(container, ctx = {}) {
          </div>`
       : '';
     body.innerHTML = `${weekendBanner}<p class="attendance-teacher-line"><strong>${escapeHtml(level)}/${escapeHtml(room)}</strong> ${MIDDOT} ${students.length} ${escapeHtml(t('check.studentsCount'))}</p>
+      <p class="check-roster-status" id="checkRosterStatus" hidden role="status"></p>
       <div class="attendance-summary-row">
         ${renderSummaryHtml(summary, { weekendUncheckedOnly: weekend && !weekendHasSavedData })}
       </div>
@@ -331,6 +446,7 @@ export function renderCheckPage(container, ctx = {}) {
         <input class="input-field attendance-tools__search" id="studentSearch" placeholder="${escapeHtml(t('check.searchPlaceholder'))}" />
         <div class="attendance-tools__actions">
           ${canEdit ? `<button type="button" class="attendance-chip-btn" id="markAllPresent">${escapeHtml(t('check.markAll'))}</button>` : ''}
+          ${isOnline() ? `<button type="button" class="attendance-chip-btn" id="refreshRosterBtn">${escapeHtml(t('check.rosterRefresh'))}</button>` : ''}
           ${admin || multiClass ? `<button type="button" class="attendance-chip-btn" id="changeClassBtn">${escapeHtml(t('check.changeClass'))}</button>` : ''}
         </div>
       </div>
@@ -339,6 +455,7 @@ export function renderCheckPage(container, ctx = {}) {
 
     footer.hidden = !canEdit;
     bindInteractions();
+    updateRosterStatusUi();
   }
 
   function bindInteractions() {
@@ -389,6 +506,12 @@ export function renderCheckPage(container, ctx = {}) {
         updateStudentCardUI(scrollEl, s.student_id, 'present', disc, dateKey);
       });
       refreshSummary();
+    });
+
+    body.querySelector('#refreshRosterBtn')?.addEventListener('click', () => {
+      if (rosterRefreshing) return;
+      invalidateClassRosterCache(level, room);
+      void openClass({ forceRosterRefresh: true });
     });
 
     body.querySelector('#changeClassBtn')?.addEventListener('click', () => {
@@ -504,80 +627,66 @@ export function renderCheckPage(container, ctx = {}) {
     ).length;
   }
 
-  async function openClass() {
+  async function openClass({ forceRosterRefresh = false } = {}) {
     if (!level || !room) return;
     if (!assertClassAccess()) return;
 
     classReady = true;
     persistClassSelection?.(level, room, { classConfirmed: true });
     if (pickerSheet) pickerSheet.hidden = true;
-    body.innerHTML = renderLoading(t('check.loadingStudents'));
 
     const classKey = buildAttendanceClassKey(level, room);
+    const cachedPeek = forceRosterRefresh
+      ? { students: [], fromCache: false, cacheAgeMs: null }
+      : peekStudentsByClass(level, room);
+    const useCachedRoster = cachedPeek.fromCache && cachedPeek.students.length > 0;
+
+    if (!useCachedRoster) {
+      body.innerHTML = renderLoading(t('check.loadingStudents'));
+    }
+
     try {
+      if (useCachedRoster) {
+        students = cachedPeek.students;
+        rosterCacheAgeMs = cachedPeek.cacheAgeMs;
+        await initAppSettings();
+        if (isOnline()) {
+          const records = await getAttendanceForClassOnDate(classKey, dateKey);
+          applyAttendanceRecords(records);
+        } else {
+          await applyAttendanceRecords([]);
+          if (!students.length) {
+            throw new Error(t('offline.noCachedStudents'));
+          }
+        }
+        prepareStudentAttendanceState();
+        renderStudentsUI();
+        if (isOnline()) {
+          startBackgroundRosterRefresh();
+        }
+        await finishClassSession(classKey);
+        return;
+      }
+
       const [, studentList, records] = await Promise.all([
         initAppSettings(),
-        fetchStudentsByClass(level, room),
+        fetchStudentsByClass(level, room, { forceRefresh: forceRosterRefresh }),
         isOnline() ? getAttendanceForClassOnDate(classKey, dateKey) : Promise.resolve([])
       ]);
       students = studentList;
+      rosterCacheAgeMs = peekStudentsByClass(level, room).cacheAgeMs;
 
       if (isOnline()) {
-        attendance = recordsToAttendanceMap(records);
-        discipline = recordsToDisciplineMap(records);
-        weekendHasSavedData = isWeekendCheck() && records.length > 0;
-        weekendSavedCount = records.length;
+        applyAttendanceRecords(records);
       } else {
-        const cached = await getCachedClassSession(classKey, dateKey);
-        attendance = cached?.attendance ?? {};
-        discipline = cached?.discipline ?? {};
-        weekendHasSavedData = isWeekendCheck() && Object.keys(attendance).length > 0;
-        weekendSavedCount = Object.keys(attendance).length;
+        await applyAttendanceRecords([]);
         if (!students.length) {
           throw new Error(t('offline.noCachedStudents'));
         }
       }
 
-      const weekend = isWeekendCheck();
-
-      students.forEach((s) => {
-        const sid = String(s.student_id);
-        if (!weekend && !attendance[sid]) {
-          attendance[sid] = CHECK_DEFAULT_STATUS;
-        }
-        if (!discipline[sid]) discipline[sid] = emptyDisciplineEntry();
-        if (weekend) return;
-        if (normalizeAttendanceStatus(attendance[sid]) === 'absent') {
-          if (!discipline[sid].disciplineWaived) {
-            discipline[sid] = {
-              ...discipline[sid],
-              flags: resolveDisciplineFlagsForScoring('absent', dateKey, discipline[sid].flags)
-            };
-          }
-        } else {
-          const rules = getDisciplineChecks();
-          let flags = normalizeDisciplineFlags(discipline[sid].flags);
-          if (rules.length && flags.length === rules.length) {
-            flags = [];
-          }
-          discipline[sid] = { ...discipline[sid], flags };
-        }
-      });
-
-      baselineDiscipline = cloneDisciplineMap(discipline);
-      dismissSaveResultBadge();
-      await cacheClassSession(classKey, dateKey, { attendance, discipline, students });
-      if (isOnline()) {
-        try {
-          const absentCount = await resyncPointsForLoadedClass();
-          if (absentCount > 0) {
-            onToast?.(t('check.pointsResynced', { count: absentCount }));
-          }
-        } catch (err) {
-          console.error('[check] point resync failed', err);
-          onToast?.(t('check.pointSyncFailed'));
-        }
-      }
+      prepareStudentAttendanceState();
+      await finishClassSession(classKey);
       renderStudentsUI();
     } catch (err) {
       console.error('[check] openClass failed', err);

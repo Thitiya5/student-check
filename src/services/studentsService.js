@@ -30,11 +30,18 @@ const studentsByClassCache = new Map();
 /** @type {Map<string, Promise<object[]>>} */
 const studentsByClassInflight = new Map();
 
+/** @type {Map<string, Promise<object[]>>} */
+const studentsByClassRefreshInflight = new Map();
+
 function classCacheKey(level, room) {
   return `${String(level).trim()}|${String(room).trim()}`;
 }
 
-function readLsEntry(key) {
+/**
+ * @param {string} key
+ * @returns {{ data: unknown, t: number }|null}
+ */
+function readLsEntryMeta(key) {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
@@ -44,10 +51,15 @@ function readLsEntry(key) {
       localStorage.removeItem(key);
       return null;
     }
-    return parsed.data ?? null;
+    return { data: parsed.data ?? null, t: parsed.t };
   } catch {
     return null;
   }
+}
+
+function readLsEntry(key) {
+  const meta = readLsEntryMeta(key);
+  return meta?.data ?? null;
 }
 
 function writeLsEntry(key, data) {
@@ -64,10 +76,125 @@ function requireGasConfigured() {
   }
 }
 
+/**
+ * Immediate roster read (memory → localStorage). No network.
+ * @param {string} level
+ * @param {string} room
+ * @returns {{ students: object[], fromCache: boolean, cacheAgeMs: number|null }}
+ */
+export function peekStudentsByClass(level, room) {
+  const lvl = String(level).trim();
+  const rm = String(room).trim();
+  if (!lvl || !rm) {
+    return { students: [], fromCache: false, cacheAgeMs: null };
+  }
+
+  const key = classCacheKey(lvl, rm);
+  if (studentsByClassCache.has(key)) {
+    const list = studentsByClassCache.get(key);
+    if (Array.isArray(list)) {
+      const meta = readLsEntryMeta(STUDENTS_LS_PREFIX + key);
+      return {
+        students: list,
+        fromCache: true,
+        cacheAgeMs: meta ? Date.now() - meta.t : null
+      };
+    }
+  }
+
+  const meta = readLsEntryMeta(STUDENTS_LS_PREFIX + key);
+  if (Array.isArray(meta?.data)) {
+    studentsByClassCache.set(key, meta.data);
+    return {
+      students: meta.data,
+      fromCache: true,
+      cacheAgeMs: Date.now() - meta.t
+    };
+  }
+
+  return { students: [], fromCache: false, cacheAgeMs: null };
+}
+
+/**
+ * @param {string} level
+ * @param {string} room
+ */
+export function invalidateClassRosterCache(level, room) {
+  const key = classCacheKey(String(level).trim(), String(room).trim());
+  studentsByClassCache.delete(key);
+  studentsByClassInflight.delete(key);
+  studentsByClassRefreshInflight.delete(key);
+  try {
+    localStorage.removeItem(STUDENTS_LS_PREFIX + key);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Fetch roster from GAS and update caches (blocking).
+ * @param {string} level
+ * @param {string} room
+ */
+async function fetchStudentsFromNetwork(level, room) {
+  const lvl = String(level).trim();
+  const rm = String(room).trim();
+  const key = classCacheKey(lvl, rm);
+  const lsKey = STUDENTS_LS_PREFIX + key;
+  const classKey = buildAttendanceClassKey(lvl, rm);
+
+  if (!isOnline()) {
+    const cached =
+      studentsByClassCache.get(key) || (await getCachedStudentsForClass(classKey));
+    if (cached?.length) {
+      studentsByClassCache.set(key, cached);
+      return cached;
+    }
+    throw new Error('ออฟไลน์ — ยังไม่มีรายชื่อนักเรียนที่แคชไว้ กรุณาโหลดห้องนี้ตอนมีอินเทอร์เน็ต');
+  }
+
+  const list = await fetchStudentsGas({ level: lvl, room: rm });
+  studentsByClassCache.set(key, list);
+  writeLsEntry(lsKey, list);
+  if (list.length) {
+    await cacheStudentsForClass(classKey, list);
+  }
+  return list;
+}
+
+/**
+ * Background refresh — deduped per class; updates memory + localStorage.
+ * @param {string} level
+ * @param {string} room
+ */
+export async function refreshStudentsByClassInBackground(level, room) {
+  const lvl = String(level).trim();
+  const rm = String(room).trim();
+  if (!lvl || !rm || !isOnline()) return peekStudentsByClass(lvl, rm).students;
+
+  requireGasConfigured();
+  const key = classCacheKey(lvl, rm);
+  const inflight = studentsByClassRefreshInflight.get(key);
+  if (inflight) return inflight;
+
+  const promise = fetchStudentsFromNetwork(lvl, rm)
+    .catch((err) => {
+      console.warn('[students] background refresh failed', err);
+      return studentsByClassCache.get(key) ?? peekStudentsByClass(lvl, rm).students;
+    })
+    .finally(() => {
+      studentsByClassRefreshInflight.delete(key);
+    });
+
+  studentsByClassRefreshInflight.set(key, promise);
+  return promise;
+}
+
 export function clearStudentsCache() {
   classOptionsCache = null;
   studentsByClassCache.clear();
   studentsByClassInflight.clear();
+  studentsByClassRefreshInflight.clear();
   try {
     for (let i = localStorage.length - 1; i >= 0; i -= 1) {
       const k = localStorage.key(i);
@@ -135,11 +262,12 @@ export async function fetchRoomOptions(level) {
 }
 
 /**
- * Load students for one class from Google Sheets API.
+ * Load students for one class. Uses cache when available unless forceRefresh.
  * @param {string} level
  * @param {string} room
+ * @param {{ forceRefresh?: boolean }} [opts]
  */
-export async function fetchStudentsByClass(level, room) {
+export async function fetchStudentsByClass(level, room, opts = {}) {
   const lvl = String(level).trim();
   const rm = String(room).trim();
   if (!lvl || !rm) return [];
@@ -147,15 +275,14 @@ export async function fetchStudentsByClass(level, room) {
   requireGasConfigured();
 
   const key = classCacheKey(lvl, rm);
-  if (studentsByClassCache.has(key)) {
-    return studentsByClassCache.get(key) ?? [];
-  }
 
-  const lsKey = STUDENTS_LS_PREFIX + key;
-  const cachedLs = readLsEntry(lsKey);
-  if (Array.isArray(cachedLs)) {
-    studentsByClassCache.set(key, cachedLs);
-    return cachedLs;
+  if (!opts.forceRefresh) {
+    const peek = peekStudentsByClass(lvl, rm);
+    if (peek.fromCache) {
+      return peek.students;
+    }
+  } else {
+    invalidateClassRosterCache(lvl, rm);
   }
 
   const inflight = studentsByClassInflight.get(key);
@@ -163,27 +290,11 @@ export async function fetchStudentsByClass(level, room) {
 
   const loadPromise = (async () => {
     try {
-      if (!isOnline()) {
-        const cached =
-          studentsByClassCache.get(key) ||
-          (await getCachedStudentsForClass(buildAttendanceClassKey(lvl, rm)));
-        if (cached?.length) {
-          studentsByClassCache.set(key, cached);
-          return cached;
-        }
-        throw new Error('ออฟไลน์ — ยังไม่มีรายชื่อนักเรียนที่แคชไว้ กรุณาโหลดห้องนี้ตอนมีอินเทอร์เน็ต');
-      }
-
-      const list = await fetchStudentsGas({ level: lvl, room: rm });
-      studentsByClassCache.set(key, list);
-      if (list.length) {
-        writeLsEntry(lsKey, list);
-        await cacheStudentsForClass(buildAttendanceClassKey(lvl, rm), list);
-      }
-      return list;
+      return await fetchStudentsFromNetwork(lvl, rm);
     } catch (err) {
       const classKey = buildAttendanceClassKey(lvl, rm);
-      const cached = studentsByClassCache.get(key) || (await getCachedStudentsForClass(classKey));
+      const cached =
+        studentsByClassCache.get(key) || (await getCachedStudentsForClass(classKey));
       if (cached?.length) {
         studentsByClassCache.set(key, cached);
         return cached;
