@@ -27,6 +27,9 @@ let classOptionsCache = null;
 /** @type {Map<string, object[]>} */
 const studentsByClassCache = new Map();
 
+/** @type {Map<string, Promise<object[]>>} */
+const studentsByClassInflight = new Map();
+
 function classCacheKey(level, room) {
   return `${String(level).trim()}|${String(room).trim()}`;
 }
@@ -64,6 +67,7 @@ function requireGasConfigured() {
 export function clearStudentsCache() {
   classOptionsCache = null;
   studentsByClassCache.clear();
+  studentsByClassInflight.clear();
   try {
     for (let i = localStorage.length - 1; i >= 0; i -= 1) {
       const k = localStorage.key(i);
@@ -144,41 +148,55 @@ export async function fetchStudentsByClass(level, room) {
 
   const key = classCacheKey(lvl, rm);
   if (studentsByClassCache.has(key)) {
-    const cached = studentsByClassCache.get(key);
-    if (cached?.length) return cached;
-    studentsByClassCache.delete(key);
+    return studentsByClassCache.get(key) ?? [];
   }
 
   const lsKey = STUDENTS_LS_PREFIX + key;
   const cachedLs = readLsEntry(lsKey);
-  if (Array.isArray(cachedLs) && cachedLs.length) {
+  if (Array.isArray(cachedLs)) {
     studentsByClassCache.set(key, cachedLs);
     return cachedLs;
   }
 
-  try {
-    if (!isOnline()) {
-      const cached =
-        studentsByClassCache.get(key) ||
-        (await getCachedStudentsForClass(buildAttendanceClassKey(lvl, rm)));
-      if (cached?.length) return cached;
-      throw new Error('ออฟไลน์ — ยังไม่มีรายชื่อนักเรียนที่แคชไว้ กรุณาโหลดห้องนี้ตอนมีอินเทอร์เน็ต');
-    }
+  const inflight = studentsByClassInflight.get(key);
+  if (inflight) return inflight;
 
-    const list = await fetchStudentsGas({ level: lvl, room: rm });
-    if (list.length) {
+  const loadPromise = (async () => {
+    try {
+      if (!isOnline()) {
+        const cached =
+          studentsByClassCache.get(key) ||
+          (await getCachedStudentsForClass(buildAttendanceClassKey(lvl, rm)));
+        if (cached?.length) {
+          studentsByClassCache.set(key, cached);
+          return cached;
+        }
+        throw new Error('ออฟไลน์ — ยังไม่มีรายชื่อนักเรียนที่แคชไว้ กรุณาโหลดห้องนี้ตอนมีอินเทอร์เน็ต');
+      }
+
+      const list = await fetchStudentsGas({ level: lvl, room: rm });
       studentsByClassCache.set(key, list);
-      writeLsEntry(lsKey, list);
-      await cacheStudentsForClass(buildAttendanceClassKey(lvl, rm), list);
+      if (list.length) {
+        writeLsEntry(lsKey, list);
+        await cacheStudentsForClass(buildAttendanceClassKey(lvl, rm), list);
+      }
+      return list;
+    } catch (err) {
+      const classKey = buildAttendanceClassKey(lvl, rm);
+      const cached = studentsByClassCache.get(key) || (await getCachedStudentsForClass(classKey));
+      if (cached?.length) {
+        studentsByClassCache.set(key, cached);
+        return cached;
+      }
+      console.error('[students] load failed:', err);
+      throw err instanceof Error ? err : new Error(String(err));
+    } finally {
+      studentsByClassInflight.delete(key);
     }
-    return list;
-  } catch (err) {
-    const classKey = buildAttendanceClassKey(lvl, rm);
-    const cached = studentsByClassCache.get(key) || (await getCachedStudentsForClass(classKey));
-    if (cached?.length) return cached;
-    console.error('[students] load failed:', err);
-    throw err instanceof Error ? err : new Error(String(err));
-  }
+  })();
+
+  studentsByClassInflight.set(key, loadPromise);
+  return loadPromise;
 }
 
 /**

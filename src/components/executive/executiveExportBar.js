@@ -1,9 +1,6 @@
 import { escapeHtml } from '../../utils/html.js';
 import { t } from '../../i18n/index.js';
-import {
-  canExportExecutivePdf,
-  exportExecutiveDashboardPdf
-} from '../../services/executive/executivePdfService.js';
+import { canExportExecutivePdf } from '../../services/executive/executivePdfExportGate.js';
 
 /**
  * @param {{ canExport?: boolean }} [opts]
@@ -67,6 +64,7 @@ export function bindExecutiveExportBar(root, { data, filters, onToast }) {
     freshBtn.textContent = t('executive.export.generating');
 
     try {
+      const { exportExecutiveDashboardPdf } = await import('../../services/executive/executivePdfService.js');
       await exportExecutiveDashboardPdf({ data, filters });
       onToast?.(t('executive.export.done'));
     } catch (err) {

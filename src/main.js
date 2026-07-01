@@ -14,6 +14,7 @@ import { renderBottomNav } from './components/navbar.js';
 import { openConfirmModal } from './components/confirmModal.js';
 import { loadAppState, saveAppState, getTodayDateKey, getDefaultAppState, STORAGE_KEY } from './data/appState.js';
 import { getRouteAccessDenied } from './config/routeGuards.js';
+import { isExecutiveEnabled } from './config/featureFlags.js';
 import { isSchoolDay } from './utils/dateIso.js';
 import { syncStateToToday, startDayRolloverWatch } from './services/appDay.js';
 import {
@@ -181,19 +182,21 @@ startDayWatch();
 renderApp();
 void bootstrapApp();
 
-async function bootstrapApp() {
+function scheduleDeferredBootstrap(task) {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(() => void task(), { timeout: 3000 });
+  } else {
+    setTimeout(() => void task(), 80);
+  }
+}
+
+async function runDeferredBootstrap() {
   try {
     await initAppSettings();
     console.log('[settings] loaded');
   } catch (err) {
     console.warn('[settings] init failed', err?.message || err);
   }
-
-  startAutoSync((result) => {
-    if (result.synced > 0) {
-      showToast(t('offline.syncedCount', { count: result.synced }));
-    }
-  });
 
   try {
     await verifyFirestoreConnection();
@@ -211,7 +214,6 @@ async function bootstrapApp() {
       console.log('[GAS] connected:', ping?.message || 'ok');
     } catch (err) {
       console.warn('[GAS] connection failed:', err?.message);
-      clearStudentsCache();
     }
   } else {
     console.warn('[GAS] not configured — set VITE_GAS_WEB_APP_URL or VITE_GOOGLE_SCRIPT_URL in .env');
@@ -234,6 +236,16 @@ async function bootstrapApp() {
       console.warn('[auth] session verify skipped:', err?.message || err);
     }
   }
+}
+
+function bootstrapApp() {
+  startAutoSync((result) => {
+    if (result.synced > 0) {
+      showToast(t('offline.syncedCount', { count: result.synced }));
+    }
+  });
+
+  scheduleDeferredBootstrap(runDeferredBootstrap);
 }
 
 function getRoute() {
@@ -622,6 +634,10 @@ async function renderRoutePage(pageContent, currentRoute, pageCtx) {
       break;
     }
     case '/executive': {
+      if (!isExecutiveEnabled()) {
+        pageContent.innerHTML = `<div class="ui-empty"><p class="ui-empty__title">${t('common.notFound')}</p></div>`;
+        break;
+      }
       pageContent.classList.add('page-content--executive');
       const { renderExecutiveDashboardPage } = await import('./pages/executive/executiveDashboard.js');
       renderExecutiveDashboardPage(pageContent, pageCtx);
@@ -722,7 +738,7 @@ async function renderAppAsync() {
   const navbar = document.createElement('div');
   navbar.innerHTML = renderBottomNav(currentRoute, {
     showPointsReport: canViewPointsReportSession(authSession),
-    showExecutive: isAdminSession(authSession)
+    showExecutive: isAdminSession(authSession) && isExecutiveEnabled()
   });
   navbar.addEventListener('click', (e) => {
     const button = e.target.closest('.bottom-nav-button');

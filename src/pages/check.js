@@ -508,8 +508,6 @@ export function renderCheckPage(container, ctx = {}) {
     if (!level || !room) return;
     if (!assertClassAccess()) return;
 
-    await initAppSettings();
-
     classReady = true;
     persistClassSelection?.(level, room, { classConfirmed: true });
     if (pickerSheet) pickerSheet.hidden = true;
@@ -517,10 +515,14 @@ export function renderCheckPage(container, ctx = {}) {
 
     const classKey = buildAttendanceClassKey(level, room);
     try {
-      students = await fetchStudentsByClass(level, room);
+      const [, studentList, records] = await Promise.all([
+        initAppSettings(),
+        fetchStudentsByClass(level, room),
+        isOnline() ? getAttendanceForClassOnDate(classKey, dateKey) : Promise.resolve([])
+      ]);
+      students = studentList;
 
       if (isOnline()) {
-        const records = await getAttendanceForClassOnDate(classKey, dateKey);
         attendance = recordsToAttendanceMap(records);
         discipline = recordsToDisciplineMap(records);
         weekendHasSavedData = isWeekendCheck() && records.length > 0;

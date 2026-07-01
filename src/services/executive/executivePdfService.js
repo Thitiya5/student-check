@@ -9,6 +9,7 @@ import { APP_THEME_COLOR } from '../../config/schoolBranding.js';
 import { formatDateWithDayThai } from '../../components/datePicker.js';
 import { formatExecutiveClassLabel } from '../../utils/executive/executiveClassLabel.js';
 import { BANGKOK_TZ } from '../../utils/dateIso.js';
+import { canExportExecutivePdf } from './executivePdfExportGate.js';
 
 const EXEC_PDF_FONT = "'Sarabun',Tahoma,sans-serif";
 
@@ -44,16 +45,6 @@ const EXEC_PDF_STYLES = `
   .exec-pdf-completion__value{font-size:10pt;font-weight:700;margin:0;color:${APP_THEME_COLOR};}
   .exec-pdf-completion__sub{font-size:7.5pt;color:#555;margin:4px 0 0;}
 `;
-
-/**
- * @param {object|null|undefined} data
- */
-export function canExportExecutivePdf(data) {
-  if (!data || data.error) return false;
-  if (!data.summary || !data.charts || !data.completion || !data.insights) return false;
-  if (!Array.isArray(data.comparisonTable)) return false;
-  return true;
-}
 
 /**
  * @param {string|null|undefined} iso

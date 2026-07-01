@@ -12,7 +12,7 @@ import { renderExecutiveCharts } from '../../components/executive/executiveChart
 import { renderExecutiveCompareTable } from '../../components/executive/executiveCompareTable.js';
 import { renderExecutiveInsights } from '../../components/executive/executiveInsights.js';
 import { renderExecutiveExportBar, bindExecutiveExportBar } from '../../components/executive/executiveExportBar.js';
-import { canExportExecutivePdf } from '../../services/executive/executivePdfService.js';
+import { canExportExecutivePdf } from '../../services/executive/executivePdfExportGate.js';
 import {
   bindExecutiveErrorState,
   renderExecutiveErrorState

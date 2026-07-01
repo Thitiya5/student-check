@@ -9,6 +9,7 @@ import {
   canReturnDisciplinePointsSession
 } from '../services/teacherAuth.js';
 import { canViewDisciplineReportSession } from '../services/disciplineReportService.js';
+import { isExecutiveEnabled } from './featureFlags.js';
 
 /** @typedef {{ paths: string[], allow: (session: object|null|undefined) => boolean, messageKey: string }} RouteGuard */
 
@@ -21,10 +22,14 @@ export const ROUTE_GUARDS = [
       '/inspection',
       '/settings-admin',
       '/admin-teachers',
-      '/admin-students',
-      '/executive'
+      '/admin-students'
     ],
     allow: isAdminSession,
+    messageKey: 'admin.denied'
+  },
+  {
+    paths: ['/executive'],
+    allow: (session) => isExecutiveEnabled() && isAdminSession(session),
     messageKey: 'admin.denied'
   },
   {

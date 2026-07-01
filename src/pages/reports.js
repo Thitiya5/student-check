@@ -20,8 +20,6 @@ import {
 } from '../utils/dateIso.js';
 import { t } from '../i18n/index.js';
 import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeader.js';
-import { exportReportPdf } from '../services/pdfExport.js';
-import { exportMonthlyClassMatrixPdf } from '../services/monthlyClassMatrixPdf.js';
 import {
   renderDailyReport,
   renderWeeklyReport,
@@ -477,8 +475,10 @@ export function renderReportsPage(container, { state = {}, onToast, onLogout, on
           classKey || (levelSel?.value && !roomSel?.value ? levelSel.value : '');
         if (pdfAccess.pdfKind === 'monthlyMatrix') {
           const yearMonth = monthInput?.value || from.slice(0, 7) || today.slice(0, 7);
+          const { exportMonthlyClassMatrixPdf } = await import('../services/monthlyClassMatrixPdf.js');
           await exportMonthlyClassMatrixPdf({ yearMonth, classKey, session });
         } else {
+          const { exportReportPdf } = await import('../services/pdfExport.js');
           await exportReportPdf({
             mode,
             from,

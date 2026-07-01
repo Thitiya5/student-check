@@ -78,6 +78,15 @@ export default defineConfig(({ mode }) => {
         workbox: {
           maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
+          globIgnores: [
+            '**/pdfPageRender-*.js',
+            '**/pdfDocumentHeader-*.js',
+            '**/pdfExport-*.js',
+            '**/monthlyClassMatrixPdf-*.js',
+            '**/executivePdfService-*.js',
+            '**/index.es-*.js',
+            '**/purify.es-*.js'
+          ],
           navigateFallback: '/index.html',
           runtimeCaching: [
             {
