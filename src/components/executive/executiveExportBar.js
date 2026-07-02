@@ -33,27 +33,26 @@ export function renderExecutiveExportBar({ canExport = false } = {}) {
  *   data: object|null|undefined,
  *   filters: import('../../hooks/executive/useExecutiveFilters.js').ExecutiveFilters,
  *   onToast?: (msg: string) => void,
+ *   session?: object|null
  * }} opts
  */
-export function bindExecutiveExportBar(root, { data, filters, onToast }) {
+export function bindExecutiveExportBar(root, { data, filters, onToast, session }) {
   const btn = root.querySelector('#execExportPdf');
   if (!(btn instanceof HTMLButtonElement)) return;
+
+  if (!canExportExecutivePdf(data, session)) {
+    return;
+  }
 
   btn.replaceWith(btn.cloneNode(true));
   const freshBtn = root.querySelector('#execExportPdf');
   if (!(freshBtn instanceof HTMLButtonElement)) return;
 
-  if (!canExportExecutivePdf(data)) {
-    freshBtn.disabled = true;
-    freshBtn.setAttribute('aria-disabled', 'true');
-    return;
-  }
-
   freshBtn.disabled = false;
   freshBtn.removeAttribute('aria-disabled');
 
   freshBtn.addEventListener('click', async () => {
-    if (!canExportExecutivePdf(data) || freshBtn.disabled) {
+    if (!canExportExecutivePdf(data, session) || freshBtn.disabled) {
       onToast?.(t('executive.export.failed'));
       return;
     }
@@ -65,7 +64,7 @@ export function bindExecutiveExportBar(root, { data, filters, onToast }) {
 
     try {
       const { exportExecutiveDashboardPdf } = await import('../../services/executive/executivePdfService.js');
-      await exportExecutiveDashboardPdf({ data, filters });
+      await exportExecutiveDashboardPdf({ data, filters, session });
       onToast?.(t('executive.export.done'));
     } catch (err) {
       onToast?.(err?.message || t('executive.export.failed'));

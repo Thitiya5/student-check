@@ -11,7 +11,8 @@ import {
   reasonLabel
 } from '../services/studentPointsService.js';
 import { returnDisciplinePointsForStudent } from '../services/disciplineReturnService.js';
-import { loadTeacherAuthSession, canReturnDisciplinePointsSession, classKeyToParts } from '../services/teacherAuth.js';
+import { loadTeacherAuthSession, canReturnDisciplinePointsSession, isAdminSession, classKeyToParts } from '../services/teacherAuth.js';
+import { renderBulkDisciplineRestorePanel } from '../components/bulkDisciplineRestorePanel.js';
 import { getTodayDate } from '../utils/dateIso.js';
 import { initAppSettings, isDisciplineScoringEnabled } from '../services/appSettingsService.js';
 
@@ -29,6 +30,7 @@ export function renderDisciplineRecordsPage(container, { state = {}, onNavigate,
 
   container.classList.add('discipline-records-page');
   const today = getTodayDate();
+  const isAdmin = isAdminSession(session);
   const teacherName = String(session?.teacherName || state.teacherName || '').trim();
 
   let historyFrom = today;
@@ -42,6 +44,7 @@ export function renderDisciplineRecordsPage(container, { state = {}, onNavigate,
     title: t('disciplineRecords.title'),
     topAction: 'back'
   })}
+  ${isAdmin ? '<div id="bulkRestoreMount"></div>' : ''}
   <section class="reports-toolbar glass-card behavior-history-toolbar">
     <div class="reports-toolbar__block">
       <p class="reports-toolbar__block-title">${escapeHtml(t('reports.filterPeriod'))}</p>
@@ -93,6 +96,13 @@ export function renderDisciplineRecordsPage(container, { state = {}, onNavigate,
       historyBody.innerHTML = renderEmpty(t('behavior.scoringDisabled'));
     }
     return;
+  }
+
+  if (isAdmin) {
+    const bulkMount = container.querySelector('#bulkRestoreMount');
+    if (bulkMount) {
+      renderBulkDisciplineRestorePanel(bulkMount, { session, teacherName, onToast });
+    }
   }
 
   function renderHistoryLedger(list) {

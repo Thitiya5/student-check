@@ -6,6 +6,7 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
+  writeBatch,
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from './firebaseClient.js';
@@ -22,6 +23,12 @@ import {
 } from './teacherAuth.js';
 
 const COLLECTION = 'attendance';
+
+/** Firestore batch write limit (leave headroom below 500). */
+const FIRESTORE_BATCH_MAX = 450;
+
+/** Max wait for a class attendance batch commit before surfacing an error. */
+export const ATTENDANCE_SAVE_TIMEOUT_MS = 45_000;
 
 /** Firestore `in` supports up to 30 values. */
 const FIRESTORE_IN_MAX = 30;
@@ -44,6 +51,12 @@ function attendanceDocId(classKey, studentId, attendanceDate) {
   return `${safeClass}__${safeStudent}__${attendanceDate}`;
 }
 
+function timestampFieldToIso(raw) {
+  if (!raw) return null;
+  if (typeof raw?.toDate === 'function') return raw.toDate().toISOString();
+  return String(raw);
+}
+
 function mapAttendanceDoc(docSnap) {
   const data = docSnap.data();
   const createdAt = data.createdAt?.toDate?.() ?? null;
@@ -55,20 +68,85 @@ function mapAttendanceDoc(docSnap) {
     status: normalizeAttendanceStatus(data.status),
     teacherName: String(data.teacherName ?? data.teacher ?? ''),
     attendanceDate: String(data.attendanceDate ?? ''),
+    attendanceSubmitted: Boolean(data.attendanceSubmitted),
+    submittedBy: String(data.submittedBy ?? ''),
+    submittedAt: timestampFieldToIso(data.submittedAt),
     disciplineFlags: Array.isArray(data.disciplineFlags) ? data.disciplineFlags.map(String) : [],
     disciplineBehaviors: Array.isArray(data.disciplineBehaviors) ? data.disciplineBehaviors : [],
     disciplineAdjust: Number(data.disciplineAdjust) || 0,
     disciplineNote: String(data.disciplineNote ?? ''),
     disciplineWaived: Boolean(data.disciplineWaived),
     disciplineReturnedBy: String(data.disciplineReturnedBy ?? ''),
-    disciplineReturnedAt: (() => {
-      const raw = data.disciplineReturnedAt;
-      if (!raw) return null;
-      if (typeof raw?.toDate === 'function') return raw.toDate().toISOString();
-      return String(raw);
-    })(),
+    disciplineReturnedAt: timestampFieldToIso(data.disciplineReturnedAt),
+    bulkRestoreId: String(data.bulkRestoreId ?? ''),
+    disciplineRestoreReason: String(data.disciplineRestoreReason ?? ''),
     createdAt: createdAt ? createdAt.toISOString() : null
   };
+}
+
+/**
+ * @param {object} student
+ * @param {string} classKey
+ * @param {string} dateKey
+ * @param {string} teacherName
+ * @param {{ markSubmitted?: boolean }} [opts]
+ */
+function buildStudentAttendanceFields(student, classKey, dateKey, teacherName, { markSubmitted = false } = {}) {
+  const studentName =
+    String(student.student_name ?? '').trim() ||
+    `${String(student.first_name ?? '').trim()} ${String(student.last_name ?? '').trim()}`.trim();
+  /** @type {Record<string, unknown>} */
+  const payload = {
+    student_id: String(student.student_id),
+    student_name: studentName,
+    class: String(classKey),
+    status: normalizeAttendanceStatus(student.status),
+    teacherName: String(teacherName || ''),
+    attendanceDate: dateKey,
+    disciplineFlags: Array.isArray(student.disciplineFlags) ? student.disciplineFlags : [],
+    disciplineBehaviors: Array.isArray(student.disciplineBehaviors) ? student.disciplineBehaviors : [],
+    disciplineAdjust: Number(student.disciplineAdjust) || 0,
+    disciplineNote: String(student.disciplineNote ?? ''),
+    disciplineWaived: Boolean(student.disciplineWaived),
+    disciplineReturnedBy: String(student.disciplineReturnedBy ?? ''),
+    disciplineReturnedAt:
+      student.disciplineReturnedAt != null && student.disciplineReturnedAt !== ''
+        ? student.disciplineReturnedAt
+        : student.disciplineReturnedBy
+          ? serverTimestamp()
+          : null,
+    bulkRestoreId: String(student.bulkRestoreId ?? ''),
+    disciplineRestoreReason: String(student.disciplineRestoreReason ?? ''),
+    createdAt: serverTimestamp()
+  };
+  if (markSubmitted) {
+    payload.attendanceSubmitted = true;
+    payload.submittedBy = String(teacherName || '');
+    payload.submittedAt = serverTimestamp();
+  }
+  return payload;
+}
+
+/**
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {string} message
+ */
+function withTimeout(promise, ms, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
 }
 
 function isFirestoreIndexError(err) {
@@ -278,6 +356,16 @@ export async function getAttendanceForClassOnDate(classKey, attendanceDate) {
 }
 
 /**
+ * School-wide attendance for one day (read-only school overview).
+ * @param {string} [attendanceDate] yyyy-MM-dd
+ */
+export async function queryAttendanceByDateSchoolWide(attendanceDate = getTodayDate()) {
+  const date = String(attendanceDate || getTodayDate());
+  const q = query(collection(db, COLLECTION), where('attendanceDate', '==', date));
+  return runQuery(q);
+}
+
+/**
  * One day, scoped to session (teachers: assigned classes only; admin: that day school-wide).
  * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
  * @param {string} [attendanceDate]
@@ -332,8 +420,15 @@ export async function queryAttendanceRecords({
 
 /**
  * Upsert attendance (one doc per student + class + date).
+ * @param {{ classKey: string, teacherName: string, attendanceDate?: string, students: object[], markSubmitted?: boolean }} opts
  */
-export async function saveClassAttendance({ classKey, teacherName, attendanceDate, students }) {
+export async function saveClassAttendance({
+  classKey,
+  teacherName,
+  attendanceDate,
+  students,
+  markSubmitted = false
+}) {
   if (!students?.length) {
     return [];
   }
@@ -342,46 +437,32 @@ export async function saveClassAttendance({ classKey, teacherName, attendanceDat
   if (!isSchoolDay(dateKey)) {
     throw new Error(t('check.weekendNoSave'));
   }
-  const col = collection(db, COLLECTION);
-  const ids = [];
+
+  const runSave = async () => {
+    const col = collection(db, COLLECTION);
+    const entries = students.map((student) => ({
+      docId: attendanceDocId(classKey, student.student_id, dateKey),
+      data: buildStudentAttendanceFields(student, classKey, dateKey, teacherName, { markSubmitted })
+    }));
+
+    for (let i = 0; i < entries.length; i += FIRESTORE_BATCH_MAX) {
+      const batch = writeBatch(db);
+      const chunk = entries.slice(i, i + FIRESTORE_BATCH_MAX);
+      for (const { docId, data } of chunk) {
+        batch.set(doc(col, docId), data, { merge: true });
+      }
+      await batch.commit();
+    }
+
+    return entries.map((e) => e.docId);
+  };
 
   try {
-    for (const student of students) {
-      const studentName =
-        String(student.student_name ?? '').trim() ||
-        `${String(student.first_name ?? '').trim()} ${String(student.last_name ?? '').trim()}`.trim();
-      const docId = attendanceDocId(classKey, student.student_id, dateKey);
-      const docRef = doc(col, docId);
-      await setDoc(
-        docRef,
-        {
-          student_id: String(student.student_id),
-          student_name: studentName,
-          class: String(classKey),
-          status: normalizeAttendanceStatus(student.status),
-          teacherName: String(teacherName || ''),
-          attendanceDate: dateKey,
-          disciplineFlags: Array.isArray(student.disciplineFlags) ? student.disciplineFlags : [],
-          disciplineBehaviors: Array.isArray(student.disciplineBehaviors)
-            ? student.disciplineBehaviors
-            : [],
-          disciplineAdjust: Number(student.disciplineAdjust) || 0,
-          disciplineNote: String(student.disciplineNote ?? ''),
-          disciplineWaived: Boolean(student.disciplineWaived),
-          disciplineReturnedBy: String(student.disciplineReturnedBy ?? ''),
-          disciplineReturnedAt:
-            student.disciplineReturnedAt != null && student.disciplineReturnedAt !== ''
-              ? student.disciplineReturnedAt
-              : student.disciplineReturnedBy
-                ? serverTimestamp()
-                : null,
-          createdAt: serverTimestamp()
-        },
-        { merge: true }
-      );
-      ids.push(docId);
-    }
-    return ids;
+    return await withTimeout(
+      runSave(),
+      ATTENDANCE_SAVE_TIMEOUT_MS,
+      t('check.saveTimeout')
+    );
   } catch (err) {
     console.error('[attendance] save failed:', err);
     throw wrapFirestoreError(err);

@@ -4,7 +4,7 @@ import { getTodayDate } from '../../utils/dateIso.js';
 import { escapeHtml } from '../../utils/html.js';
 import { getExecutiveDashboardBundle } from '../../services/executive/executiveAttendanceService.js';
 import { createExecutiveFilters } from '../../hooks/executive/useExecutiveFilters.js';
-import { renderExecutiveHeader } from '../../components/executive/executiveHeader.js';
+import { renderExecutiveHeader, bindExecutiveHeader } from '../../components/executive/executiveHeader.js';
 import { renderExecutiveCompletionProgress } from '../../components/executive/executiveCompletionProgress.js';
 import { renderExecutiveSummaryCards } from '../../components/executive/executiveSummaryCards.js';
 import { renderExecutiveFilters, bindExecutiveFilters } from '../../components/executive/executiveFilters.js';
@@ -12,7 +12,9 @@ import { renderExecutiveCharts } from '../../components/executive/executiveChart
 import { renderExecutiveCompareTable } from '../../components/executive/executiveCompareTable.js';
 import { renderExecutiveInsights } from '../../components/executive/executiveInsights.js';
 import { renderExecutiveExportBar, bindExecutiveExportBar } from '../../components/executive/executiveExportBar.js';
+import { isAdminSession } from '../../services/teacherAuth.js';
 import { canExportExecutivePdf } from '../../services/executive/executivePdfExportGate.js';
+import { peekSchoolOverviewCache } from '../../services/executive/schoolOverviewCache.js';
 import {
   bindExecutiveErrorState,
   renderExecutiveErrorState
@@ -26,14 +28,19 @@ export function renderExecutiveDashboardPage(container, { state, onToast } = {})
   container.classList.add('executive-dashboard-page');
   const filterStore = createExecutiveFilters();
   const session = state?.teacherAuth ?? null;
+  const isAdmin = isAdminSession(session);
   let loadSeq = 0;
+  let refreshing = false;
+  /** @type {object|null} */
+  let lastRenderedData = null;
 
-  async function loadData(filters) {
+  async function loadData(filters, { forceRefresh = false } = {}) {
     const seq = ++loadSeq;
     const query = {
       date: filters.date || getTodayDate(),
       grade: filters.grade,
-      room: filters.room
+      room: filters.room,
+      forceRefresh
     };
 
     try {
@@ -67,12 +74,13 @@ export function renderExecutiveDashboardPage(container, { state, onToast } = {})
     }
   }
 
-  function renderShell({ filters, data, loading }) {
+  function renderShell({ filters, data, loading, isRefreshing = false }) {
     const todayLabel = formatDateWithDayThai(filters.date || getTodayDate());
     const hasError = Boolean(data?.error);
     const lastUpdated = data?.lastUpdated ?? null;
+    const showDataSections = !loading && data;
 
-    const dataSections = loading
+    const dataSections = !showDataSections
       ? ''
       : hasError
         ? renderExecutiveErrorState({
@@ -83,11 +91,11 @@ export function renderExecutiveDashboardPage(container, { state, onToast } = {})
         ${renderExecutiveSummaryCards(data?.summary ?? { totalStudents: 0, present: 0, absent: 0, leave: 0, late: 0 }, { charts: data?.charts })}        ${renderExecutiveCharts(data?.charts, { loading: false })}
         ${renderExecutiveCompareTable(data?.comparisonTable ?? [])}
         ${renderExecutiveInsights(data?.insights ?? { attendanceRate: 0, bestPerformingRoom: '—', roomNeedingAttention: '—' }, { loading: false })}
-        ${renderExecutiveExportBar({ canExport: canExportExecutivePdf(data) })}`;
+        ${isAdmin ? renderExecutiveExportBar({ canExport: canExportExecutivePdf(data, session) }) : ''}`;
 
     container.innerHTML = `<div class="exec-layout">
       <div class="exec-main">
-        ${renderExecutiveHeader({ filters, todayLabel, lastUpdated, loading })}
+        ${renderExecutiveHeader({ filters, todayLabel, lastUpdated, loading, refreshing: isRefreshing })}
         ${renderExecutiveFilters(filters)}
         ${loading ? `<p class="exec-loading" role="status">${escapeHtml(t('common.loading'))}</p>` : ''}
         ${dataSections}
@@ -95,29 +103,46 @@ export function renderExecutiveDashboardPage(container, { state, onToast } = {})
     </div>`;
 
     bindExecutiveFilters(container, filterStore);
+    bindExecutiveHeader(container, {
+      onRefresh: () => {
+        void refresh({ forceRefresh: true });
+      }
+    });
     if (hasError) {
-      bindExecutiveErrorState(container, () => refresh());
-    } else if (!loading && data) {
-      bindExecutiveExportBar(container, { data, filters, onToast });
+      bindExecutiveErrorState(container, () => refresh({ forceRefresh: true }));
+    } else if (!loading && data && isAdmin) {
+      bindExecutiveExportBar(container, { data, filters, onToast, session });
     }
   }
 
-  async function refresh() {
+  async function refresh({ forceRefresh = false } = {}) {
     const filters = filterStore.getState();
-    renderShell({ filters, data: null, loading: true });
-    const data = await loadData(filters);
+    const date = filters.date || getTodayDate();
+    const hasWarmCache = !forceRefresh && Boolean(peekSchoolOverviewCache(date));
+
+    if (!hasWarmCache) {
+      renderShell({ filters, data: lastRenderedData, loading: true, isRefreshing: forceRefresh });
+    } else if (forceRefresh) {
+      refreshing = true;
+      renderShell({ filters, data: lastRenderedData, loading: false, isRefreshing: true });
+    }
+
+    const data = await loadData(filters, { forceRefresh });
+    refreshing = false;
     if (!data) return;
-    renderShell({ filters, data, loading: false });
+    lastRenderedData = data;
+    renderShell({ filters, data, loading: false, isRefreshing: false });
   }
 
   filterStore.subscribe(() => {
-    refresh();
+    void refresh();
   });
 
-  refresh();
+  void refresh();
 
   container.__executiveCleanup = () => {
     loadSeq += 1;
+    refreshing = false;
     filterStore.subscribe(() => {});
   };
 }

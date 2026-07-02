@@ -50,7 +50,7 @@ import { buildExecutiveChartsData } from '../../utils/executive/executiveChartAg
 
 /**
  * @param {import('../teacherAuth.js').TeacherAuthSession|null|undefined} session
- * @param {{ date?: string, grade?: string, room?: string }} [opts]
+ * @param {{ date?: string, grade?: string, room?: string, forceRefresh?: boolean }} [opts]
  * @returns {Promise<ExecutiveTodaySummary>}
  */
 export async function getTodaySummary(session, opts = {}) {
@@ -71,7 +71,7 @@ export async function getTodaySummary(session, opts = {}) {
 
 /**
  * @param {import('../teacherAuth.js').TeacherAuthSession|null|undefined} session
- * @param {{ date?: string, grade?: string, room?: string }} [opts]
+ * @param {{ date?: string, grade?: string, room?: string, forceRefresh?: boolean }} [opts]
  */
 export async function getGradeSummary(session, opts = {}) {
   const ctx = await fetchExecutiveDayContext(session, opts);
@@ -90,7 +90,7 @@ export async function getGradeSummary(session, opts = {}) {
 
 /**
  * @param {import('../teacherAuth.js').TeacherAuthSession|null|undefined} session
- * @param {{ date?: string, grade?: string, room?: string }} [opts]
+ * @param {{ date?: string, grade?: string, room?: string, forceRefresh?: boolean }} [opts]
  * @returns {Promise<ExecutiveAttendanceRate>}
  */
 export async function getAttendanceRate(session, opts = {}) {
@@ -129,7 +129,7 @@ export async function getAttendanceRate(session, opts = {}) {
 /**
  * Single-load bundle for executive dashboard (one roster + one Firestore query).
  * @param {import('../teacherAuth.js').TeacherAuthSession|null|undefined} session
- * @param {{ date?: string, grade?: string, room?: string }} [opts]
+ * @param {{ date?: string, grade?: string, room?: string, forceRefresh?: boolean }} [opts]
  */
 export async function getExecutiveDashboardBundle(session, opts = {}) {
   const ctx = await fetchExecutiveDayContext(session, opts);

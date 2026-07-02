@@ -30,7 +30,6 @@ import {
   getAttendanceForClassOnDate,
   recordsToAttendanceMap,
   recordsToDisciplineMap,
-  saveClassAttendance,
   deleteAttendanceForClassOnDate
 } from '../services/attendanceService.js';
 import { cacheClassSession, getCachedClassSession } from '../services/offlineDb.js';
@@ -58,10 +57,6 @@ import { formatDateWithDayThai } from '../components/datePicker.js';
 import { renderPageHeader, renderNavQuickLinks, bindPageHeaderActions } from '../components/pageHeader.js';
 import { withBehaviorQuickLink } from '../utils/quickNavLinks.js';
 import { getHashQuery } from '../services/navigation.js';
-import {
-  enrichStudentsForPointSync,
-  syncClassPointTransactions
-} from '../services/studentPointsService.js';
 import { resyncPointsForClassDay } from '../services/historyPointSync.js';
 import { openConfirmModal } from '../components/confirmModal.js';
 
@@ -366,17 +361,6 @@ export function renderCheckPage(container, ctx = {}) {
   async function finishClassSession(classKey) {
     dismissSaveResultBadge();
     await cacheClassSession(classKey, dateKey, { attendance, discipline, students });
-    if (isOnline()) {
-      try {
-        const absentCount = await resyncPointsForLoadedClass();
-        if (absentCount > 0) {
-          onToast?.(t('check.pointsResynced', { count: absentCount }));
-        }
-      } catch (err) {
-        console.error('[check] point resync failed', err);
-        onToast?.(t('check.pointSyncFailed'));
-      }
-    }
   }
 
   function updateRosterStatusUi() {
@@ -589,44 +573,6 @@ export function renderCheckPage(container, ctx = {}) {
     }
   }
 
-  async function resyncPointsForLoadedClass() {
-    if (!isOnline() || !students.length || !level || !room || !teacherName) return 0;
-    const classKey = buildAttendanceClassKey(level, room);
-    if (!isSchoolDay(dateKey)) {
-      await resyncPointsForClassDay({ classKey, date: dateKey, teacherName });
-      return 0;
-    }
-    const studentsPayload = enrichStudentsForPointSync(
-      students.map((s) => {
-        const sid = String(s.student_id);
-        const disc = discipline[sid] || emptyDisciplineEntry();
-        const status = normalizeAttendanceStatus(attendance[sid] || CHECK_DEFAULT_STATUS);
-        return {
-          student_id: sid,
-          student_name: studentFullName(s),
-          status,
-          ...disciplineEntryToFirestore(disc)
-        };
-      }),
-      dateKey
-    );
-    await syncClassPointTransactions({
-      classKey,
-      date: dateKey,
-      teacherName,
-      students: studentsPayload
-    });
-    await saveClassAttendance({
-      classKey,
-      teacherName,
-      attendanceDate: dateKey,
-      students: studentsPayload
-    });
-    return studentsPayload.filter(
-      (s) => normalizeAttendanceStatus(s.status) === 'absent'
-    ).length;
-  }
-
   async function openClass({ forceRosterRefresh = false } = {}) {
     if (!level || !room) return;
     if (!assertClassAccess()) return;
@@ -767,7 +713,12 @@ export function renderCheckPage(container, ctx = {}) {
     if (!assertClassAccess()) return;
     const full = buildFullMap(students, attendance);
     const saveBtn = container.querySelector('#saveAttendance');
-    saveBtn.disabled = true;
+    const priorLabel =
+      saveBtn instanceof HTMLButtonElement ? saveBtn.textContent?.trim() || t('common.save') : t('common.save');
+    if (saveBtn instanceof HTMLButtonElement) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = t('check.saving');
+    }
     try {
       const classKey = buildAttendanceClassKey(level, room);
       const summary = summarizePendingDiscipline();
@@ -788,8 +739,14 @@ export function renderCheckPage(container, ctx = {}) {
           items: summary.items
         });
       }
+    } catch (err) {
+      console.error('[check] save failed', err);
+      onToast?.(err?.message || t('toast.saveFailed'));
     } finally {
-      saveBtn.disabled = false;
+      if (saveBtn instanceof HTMLButtonElement) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = priorLabel || t('common.save');
+      }
     }
   });
 

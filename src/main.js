@@ -425,7 +425,8 @@ async function submitAttendance(
     classKey,
     teacherName,
     attendanceDate: dateKey,
-    students: studentsPayload
+    students: studentsPayload,
+    markSubmitted: true
   };
 
   await cacheClassSession(classKey, dateKey, {
@@ -434,13 +435,21 @@ async function submitAttendance(
     students: classStudents
   });
 
-  const syncPoints = async () => {
-    await syncClassPointTransactions({
-      classKey,
-      date: dateKey,
-      teacherName,
-      students: studentsPayload
-    });
+  const runBackgroundPointSync = () => {
+    void (async () => {
+      try {
+        await syncClassPointTransactions({
+          classKey,
+          date: dateKey,
+          teacherName,
+          students: studentsPayload
+        });
+        void flushPendingAttendance();
+      } catch (err) {
+        console.warn('[attendance] background point sync failed:', err);
+        showToast(t('check.pointSyncFailed'));
+      }
+    })();
   };
 
   if (!isOnline()) {
@@ -477,15 +486,8 @@ async function submitAttendance(
       ...savePayload
     });
     notifyOfflineStatus();
-    showToast(t('offline.savedQueued'));
+    showToast(err?.message || t('toast.saveFailed'));
     return false;
-  }
-  try {
-    await syncPoints();
-    void flushPendingAttendance();
-  } catch (err) {
-    console.error('[attendance] point sync failed:', err);
-    showToast(t('check.pointSyncFailed'));
   }
 
   state = {
@@ -499,6 +501,7 @@ async function submitAttendance(
   };
   saveAppState(state);
   showToast(t('check.saveSuccess'));
+  runBackgroundPointSync();
 
   if (navigateAfterSave) {
     window.location.hash = '/dashboard';
@@ -738,7 +741,7 @@ async function renderAppAsync() {
   const navbar = document.createElement('div');
   navbar.innerHTML = renderBottomNav(currentRoute, {
     showPointsReport: canViewPointsReportSession(authSession),
-    showExecutive: isAdminSession(authSession) && isExecutiveEnabled()
+    showExecutive: isExecutiveEnabled() && Boolean(authSession)
   });
   navbar.addEventListener('click', (e) => {
     const button = e.target.closest('.bottom-nav-button');

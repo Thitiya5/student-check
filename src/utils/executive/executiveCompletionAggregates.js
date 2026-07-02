@@ -13,10 +13,12 @@ import { formatExecutiveClassLabel } from './executiveClassLabel.js';
  */
 
 /**
- * @param {{ updatedAt?: string|null, createdAt?: string|null }} row
+ * @param {{ updatedAt?: string|null, createdAt?: string|null, submittedAt?: string|null }} row
  * @returns {string|null}
  */
 export function attendanceRowTimestamp(row) {
+  const submitted = row?.submittedAt ? String(row.submittedAt) : '';
+  if (submitted) return submitted;
   const updated = row?.updatedAt ? String(row.updatedAt) : '';
   if (updated) return updated;
   const created = row?.createdAt ? String(row.createdAt) : '';
@@ -24,29 +26,42 @@ export function attendanceRowTimestamp(row) {
 }
 
 /**
- * A classroom is submitted when every roster student has a saved attendance record.
- * Missing records are "not submitted" — never treated as absent here.
+ * A classroom is submitted when every roster student has an explicit save marker,
+ * or (legacy) when every roster student has any attendance record.
  * @param {Array<{ student_id: string }>} roster
- * @param {Array<{ student_id: string }>} classRows
+ * @param {Array<{ student_id: string, attendanceSubmitted?: boolean }>} classRows
  */
 export function isClassAttendanceSubmitted(roster, classRows) {
   if (!roster.length) return false;
+
+  const usesExplicitMarker = classRows.some((row) => row.attendanceSubmitted === true);
+  if (usesExplicitMarker) {
+    const rowByStudent = new Map(classRows.map((row) => [String(row.student_id || ''), row]));
+    return roster.every((student) => {
+      const row = rowByStudent.get(String(student.student_id || ''));
+      return row?.attendanceSubmitted === true;
+    });
+  }
+
   const statusByStudent = recordsToAttendanceMap(classRows);
   return roster.every((student) => Boolean(statusByStudent[String(student.student_id || '')]));
 }
 
 /**
- * @param {Array<{ teacherName?: string, createdAt?: string|null, updatedAt?: string|null }>} classRows
+ * @param {Array<{ teacherName?: string, submittedBy?: string, attendanceSubmitted?: boolean, createdAt?: string|null, updatedAt?: string|null, submittedAt?: string|null }>} classRows
  */
 export function pickClassSubmissionMeta(classRows) {
   if (!classRows.length) {
     return { lastTimestamp: null, teacherName: '' };
   }
 
-  let latestRow = classRows[0];
+  const submittedRows = classRows.filter((row) => row.attendanceSubmitted === true);
+  const candidates = submittedRows.length ? submittedRows : classRows;
+
+  let latestRow = candidates[0];
   let latestTs = attendanceRowTimestamp(latestRow) || '';
 
-  for (const row of classRows) {
+  for (const row of candidates) {
     const ts = attendanceRowTimestamp(row) || '';
     if (ts && ts >= latestTs) {
       latestTs = ts;
@@ -56,7 +71,7 @@ export function pickClassSubmissionMeta(classRows) {
 
   return {
     lastTimestamp: latestTs || null,
-    teacherName: String(latestRow?.teacherName || '').trim()
+    teacherName: String(latestRow?.submittedBy || latestRow?.teacherName || '').trim()
   };
 }
 

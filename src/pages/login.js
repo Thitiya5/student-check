@@ -54,7 +54,7 @@ export function renderLoginPage(container, { onLogin, initialName = '' }) {
       </section>
 
       <footer class="login-screen__credit">
-        <p>จัดทำโดย นางสาวเกศจุฬา ภูนาเมือง</p>
+        <p>ผู้ดูแลระบบ นางสาวเกศจุฬา ภูนาเมือง</p>
       </footer>
     </article>
   `;

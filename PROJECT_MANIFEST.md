@@ -9,9 +9,9 @@
 
 | Field | Value |
 |-------|--------|
-| **Governance version** | `v1.1.0-beta` |
-| **package.json** | `3.1.0` (legacy internal; align with governance version in a future housekeeping sprint) |
-| **Recommended next stable** | `v1.1.0` (after Executive PDF + Sprint 4 approval) |
+| **Governance version** | `v3.2.0` |
+| **package.json** | `3.2.0` |
+| **Recommended next** | `v3.3.0` (Summary Layer + Health Dashboard) |
 
 ---
 
@@ -19,9 +19,9 @@
 
 | Field | Value |
 |-------|--------|
-| **Last completed** | Sprint 3 — Real executive charts (bundle-only data) |
-| **Status** | ✅ Architecture Review **APPROVED** |
-| **Next** | Sprint 4 — *pending governance approval* (PDF export / period reports TBD) |
+| **Last completed** | Closeout 2026-06-20 — P0 attendance + P1 School Overview + P2 bulk restore |
+| **Status** | ✅ Deployed to production |
+| **Next** | Summary / Analytics Layer, Health Dashboard, Load testing |
 
 ---
 
@@ -31,8 +31,9 @@
 |------|--------|
 | **Production app** | Live — https://student-check-th.web.app |
 | **Active users** | Teachers (daily attendance) |
-| **Executive module** | Beta — admin-only, read-only analytics |
-| **Governance docs** | Initialized (this manifest + CHANGELOG + ADRs + sprint reports) |
+| **School Overview** | All teachers — read-only, cached reads |
+| **Bulk discipline restore** | Admin only — `/admin-discipline` |
+| **Governance docs** | Updated for v3.2.0 |
 
 ---
 
@@ -55,7 +56,8 @@
 | Firebase Hosting | Deployed |
 | Firestore `attendance` | Production data — schema unchanged by Executive sprints |
 | Google Apps Script (roster) | Production — deploy new GAS version after `Code.gs` changes |
-| Executive `#/executive` | In codebase; deploy with next hosting release |
+| Executive `#/executive` (School Overview) | Deployed — all teachers read-only; admin PDF |
+| Bulk discipline restore | Deployed — admin `/admin-discipline` |
 
 ---
 
@@ -63,8 +65,9 @@
 
 | Release | Date | Notes |
 |---------|------|-------|
+| **v3.2.0** | 2026-06-20 | Attendance reliability, School Overview cache, bulk restore |
+| **v1.1.0-beta** | 2026-06-20 | Executive Dashboard Sprints 1–3 |
 | **v1.0.0** | 2025 baseline | Core attendance system |
-| **v1.1.0-beta** | 2026-06-20 | Executive Dashboard Sprints 1–3 (governance tag recommended) |
 
 See [`docs/releases/`](docs/releases/).
 
@@ -72,10 +75,12 @@ See [`docs/releases/`](docs/releases/).
 
 ## Next Planned Sprint
 
-**Sprint 4** (scope TBD after governance approval):
+**Post v3.2.0** (pending governance approval):
 
-- Executive PDF export and/or period-based reporting
-- Must continue ADR constraints (no attendance workflow changes unless explicitly approved)
+- Summary / Analytics Layer (weekly & monthly overview)
+- Health Dashboard (operational monitoring)
+- Load testing (concurrent teacher usage)
+- Sprint 4 — Executive PDF export and/or period-based reporting
 
 ---
 
@@ -83,11 +88,11 @@ See [`docs/releases/`](docs/releases/).
 
 | Risk | Mitigation |
 |------|------------|
-| `package.json` version (`3.1.0`) ≠ governance version (`v1.1.0-beta`) | Documented here; align in housekeeping sprint |
-| Open Firestore rules (if still test mode) | Review `firestore.rules` before wider executive rollout |
-| Large school roster via GAS on every executive load | Single fetch per refresh; cached in `studentsService` session |
-| Executive summary KPIs count unsubmitted students as absent | Completion/charts use separate rules; document for admins |
-| GAS roster failure blocks executive page | Dedicated error state + Retry (Sprint 3) |
+| School Overview cache may show stale data up to 3 min | Manual refresh button; TTL documented |
+| Bulk restore is not auto-reversible | PIN + preview + audit doc; per-student re-apply documented |
+| Open Firestore rules (if still test mode) | Review `firestore.rules` before wider rollout |
+| Large school roster via GAS on executive/bulk preview | Cached reads; class-scoped point fan-out |
+| GAS roster failure blocks executive/bulk preview | Error state + Retry |
 
 ---
 
@@ -109,16 +114,18 @@ See [`docs/releases/`](docs/releases/).
 v1.0.0          Core attendance (production)
     │
     ▼
-v1.1.0-beta     Sprint 1  — Executive UI foundation (mock)
-                Sprint 2  — Read-only services + live KPIs
-                Sprint 2.5 — Completion command center
-                Sprint 3  — Real charts (bundle-only)
+v1.1.0-beta     Sprint 1–3 — Executive / School Overview foundation
     │
     ▼
-v1.1.0          Sprint 4+ — PDF export, stable executive release (planned)
+v3.2.0          P0 attendance reliability
+                P1 School Overview (teachers + cache)
+                P2 Bulk discipline restore
     │
     ▼
-v1.2.0+         Period analytics, trend reports (future)
+v3.3.0+         Summary Layer, Health Dashboard, Load testing (planned)
+    │
+    ▼
+v4.0.0+         Executive PDF, period analytics (Sprint 4+)
 ```
 
 ---
@@ -150,4 +157,4 @@ After **every completed sprint**, update:
 
 ---
 
-*Last updated: 2026-06-20 — Governance initialization (post Sprint 3 approval)*
+*Last updated: 2026-06-20 — v3.2.0 production closeout*

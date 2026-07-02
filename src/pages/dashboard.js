@@ -1,16 +1,12 @@
 ﻿import { renderDashboardQuickActions } from '../components/cards.js';
 import { formatDateWithDayThai } from '../components/datePicker.js';
 import { escapeHtml } from '../utils/html.js';
-import { renderLoading, renderEmpty, statusBadgeClass } from '../utils/ui.js';
+import { renderLoading, renderEmpty } from '../utils/ui.js';
 import {
   getDashboardDataForSession,
-  summarizeAttendance,
-  queryAttendanceInRangeForSession
+  summarizeAttendance
 } from '../services/attendanceService.js';
 import {
-  loadAtRiskReportsForSession,
-  getAtRiskThresholdPercent,
-  groupAtRiskReportsByClass,
   loadSemesterScoreReportsForSession,
   requiresCommunityService,
   getCommunityServiceThresholdScore
@@ -29,7 +25,7 @@ import { getSemesterDateRange } from '../utils/studentAttendanceSummary.js';
 import { parseClassKey } from '../services/attendanceService.js';
 import { formatDisciplineScore } from '../data/disciplineChecks.js';
 import { getTodayDate } from '../utils/dateIso.js';
-import { statusLabel, t } from '../i18n/index.js';
+import { t } from '../i18n/index.js';
 import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeader.js';
 
 function dashStatCard(label, value, variant = '') {
@@ -37,37 +33,6 @@ function dashStatCard(label, value, variant = '') {
     <span class="dash-stat__label">${escapeHtml(label)}</span>
     <span class="dash-stat__value">${escapeHtml(String(value))}</span>
   </article>`;
-}
-
-function activityRow(r) {
-  const status = escapeHtml(statusLabel(r.status) || r.status);
-  return `<article class="dash-activity-item">
-    <div class="dash-activity-item__main">
-      <strong>${escapeHtml(r.student_name || r.student_id)}</strong>
-      <span class="${statusBadgeClass(r.status)}">${status}</span>
-    </div>
-    <span class="dash-activity-item__meta">${escapeHtml(r.class)}</span>
-  </article>`;
-}
-
-function classChip(classKey, summary) {
-  return `<article class="dash-class-chip">
-    <span class="dash-class-chip__name">${escapeHtml(classKey)}</span>
-    <span class="dash-class-chip__meta">${summary.checked} · ${summary.percent}%</span>
-  </article>`;
-}
-
-/** @param {object[]} rows */
-function groupByClass(rows) {
-  const map = new Map();
-  for (const r of rows) {
-    const key = r.class || '—';
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(r);
-  }
-  return [...map.entries()]
-    .map(([classKey, list]) => ({ classKey, summary: summarizeAttendance(list) }))
-    .sort((a, b) => a.classKey.localeCompare(b.classKey, undefined, { numeric: true }));
 }
 
 function canViewDashboardScores(session) {
@@ -260,11 +225,6 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       <div id="dashboardAlerts" class="dash-alerts"></div>
     </section>
 
-    <section class="dash-section" id="dashboardClassesSection" hidden>
-      <h2 class="dash-section__title">${escapeHtml(t('dashboard.classesToday'))}</h2>
-      <div id="dashboardClasses" class="dash-class-chips"></div>
-    </section>
-
     ${
       showScoresSection
         ? `<section class="dash-section" id="dashboardScoresSection">
@@ -280,8 +240,6 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
   const statsEl = container.querySelector('#dashboardStats');
   const alertsSection = container.querySelector('#dashboardAlertsSection');
   const alertsEl = container.querySelector('#dashboardAlerts');
-  const classesSection = container.querySelector('#dashboardClassesSection');
-  const classesEl = container.querySelector('#dashboardClasses');
   const scoresEl = container.querySelector('#dashboardScores');
 
   /** @type {{ byClassDeducted: object[], activeTab: ScoresViewTab|null, opts: object }} */
@@ -355,91 +313,8 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
     ].join('');
   }
 
-  function paintClasses(rows) {
-    if (!classesEl || !classesSection) return;
-    const groups = groupByClass(rows);
-    if (!groups.length) {
-      classesSection.hidden = true;
-      classesEl.innerHTML = '';
-      return;
-    }
-    classesSection.hidden = false;
-    classesEl.innerHTML = groups.map((g) => classChip(g.classKey, g.summary)).join('');
-  }
-
   function applyRows(rows) {
     paintStats(summarizeAttendance(rows));
-    paintClasses(rows);
-  }
-
-  function renderAtRiskAlertHtml(atRisk) {
-    const threshold = getAtRiskThresholdPercent();
-    if (!atRisk.length) {
-      return `<article class="dash-alert dash-alert--ok glass-card">
-        <strong>${escapeHtml(t('dashboard.noRiskTitle'))}</strong>
-        <p>${escapeHtml(t('dashboard.noRiskMessage'))}</p>
-      </article>`;
-    }
-
-    const byClass = groupAtRiskReportsByClass(atRisk);
-    const classCount = byClass.length;
-
-    const classBlocks = byClass
-      .map(([classKey, list]) => {
-        const items = list
-          .map(
-            (r) =>
-              `<li class="dash-risk-student">
-            <span class="dash-risk-student__name">${escapeHtml(r.studentName)}</span>
-            <span class="dash-risk-student__pct">${r.parentRisk?.riskPercent ?? 0}%</span>
-          </li>`
-          )
-          .join('');
-
-        return `<details class="dash-risk-class">
-        <summary class="dash-risk-class__summary">
-          <span class="dash-risk-class__key">${escapeHtml(classKey)}</span>
-          <span class="dash-risk-class__badge">${list.length}</span>
-          <span class="dash-risk-class__chev" aria-hidden="true">›</span>
-        </summary>
-        <div class="dash-risk-class__body">
-          <ol class="dash-risk-student-list">${items}</ol>
-          <button type="button" class="dash-risk-class__link" data-risk-class="${escapeHtml(classKey)}">${escapeHtml(t('dashboard.openClassStudents'))}</button>
-        </div>
-      </details>`;
-      })
-      .join('');
-
-    return `<article class="dash-alert dash-alert--risk glass-card" role="alert">
-      <div class="dash-risk-head">
-        <div class="dash-risk-head__icon" aria-hidden="true">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-        </div>
-        <div class="dash-risk-head__text">
-          <p class="dash-risk-head__title">${escapeHtml(t('dashboard.attendanceRisk', { count: atRisk.length, threshold }))}</p>
-          <p class="dash-risk-head__meta">${escapeHtml(t('dashboard.riskHeadMeta', { rooms: classCount, threshold }))}</p>
-        </div>
-      </div>
-      <div class="dash-risk-class-list">${classBlocks}</div>
-    </article>`;
-  }
-
-  function bindAtRiskAlertActions() {
-    alertsEl?.querySelectorAll('[data-risk-class]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const classKey = btn.getAttribute('data-risk-class');
-        if (!classKey) return;
-        try {
-          sessionStorage.setItem('studentsPickClass', classKey);
-        } catch {
-          // ignore
-        }
-        onNavigate?.('/students');
-      });
-    });
   }
 
   function paintAlerts(cards) {
@@ -464,18 +339,6 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       </article>`);
     }
 
-    if (session) {
-      try {
-        const atRisk = await loadAtRiskReportsForSession(session, today);
-        cards.push(renderAtRiskAlertHtml(atRisk));
-      } catch (err) {
-        console.warn('[dashboard] alerts load failed', err);
-        cards.push(`<article class="dash-alert dash-alert--warn glass-card">
-          <strong>${escapeHtml(t('dashboard.alertsLoadFailed'))}</strong>
-        </article>`);
-      }
-    }
-
     if (showScoresSection && scoresCache.byClassDeducted.length) {
       const csTotal = scoresCache.byClassDeducted.reduce(
         (n, b) => n + (Number(b.communityServiceCount) || 0),
@@ -490,7 +353,6 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
     }
 
     paintAlerts(cards);
-    bindAtRiskAlertActions();
     alertsEl?.querySelectorAll('[data-goto]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const path = btn.getAttribute('data-goto');
@@ -518,7 +380,6 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       paintStats(summarizeAttendance(data.rows));
       await Promise.all([loadScores()]);
       await loadAlerts();
-      paintClasses(data.rows);
     } catch (err) {
       console.error('[dashboard] load failed', err);
       if (statsEl) statsEl.innerHTML = renderEmpty(t('dashboard.loadFailed'), err?.message);

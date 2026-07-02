@@ -14,7 +14,54 @@ for governance releases documented in [`PROJECT_MANIFEST.md`](PROJECT_MANIFEST.m
 
 ### Planned
 
-- Sprint 4 — Executive PDF export and/or period-based reporting (pending Architecture Review).
+- Summary / Analytics Layer (weekly & monthly overview via summary layer)
+- Health Dashboard (operational monitoring)
+- Load testing (school-wide concurrent usage)
+- Executive PDF export and period-based reporting (Sprint 4 scope)
+
+---
+
+## [3.2.0] — 2026-06-20
+
+Stabilization release: attendance save reliability, School Overview for teachers, bulk discipline restore.
+
+### Fixed — P0 Attendance save reliability
+
+- Batched Firestore writes (`writeBatch`, ≤450 docs) with 45s save timeout
+- Background point sync after attendance save (non-blocking UI)
+- Submission markers on attendance (`attendanceSubmitted`, `submittedBy`, `submittedAt`)
+- Removed auto point resync on class open; save button lock during submit
+
+### Added — P1 School Overview (ภาพรวมโรงเรียน)
+
+- Read-only School Overview for all logged-in teachers (feature flag `VITE_ENABLE_EXECUTIVE`)
+- School-wide attendance query for overview data
+- Client cache (memory + sessionStorage, 3 min TTL, keyed by date) to reduce repeated reads
+- Manual refresh button; PDF export remains admin-only
+- Dashboard cleanup: removed at-risk alerts and redundant “ห้องที่เช็ควันนี้” section
+
+### Added — P2 Bulk Discipline Restore
+
+- Admin-only tool at `/admin-discipline`: **คืนคะแนนระเบียบทั้งโรงเรียน**
+- Preview with KPI summary, category/level/room breakdown, sample students
+- Operation ID format `BR-YYYYMMDD-xxxx` with audit collection `bulk_discipline_restores`
+- PIN verification via existing `verifyBehaviorWritePin` (no text phrase confirmation)
+- Idempotent restore: attendance waive + system point sync (inspection categories only: ชุด, ทรงผม, เล็บ, เครื่องประดับ)
+
+### Changed
+
+- Login footer credit text updated
+- Bulk restore UI polish: compact layout, single warning in confirm modal, collapsible room details
+
+### Performance
+
+- School Overview: ~1 school-wide Firestore query per teacher per date per 3 min (vs every navigation)
+- Bulk restore: one attendance save + point sync per class (not per student)
+
+### Security
+
+- Bulk restore: admin session only; pastoral teachers retain per-row restore only
+- Attendance save flow unchanged (ADR-004)
 
 ---
 
@@ -116,5 +163,6 @@ Original production attendance system for Yangtaladwittayakarn School.
 
 ---
 
+[3.2.0]: https://github.com/your-org/student-check/compare/v1.1.0-beta...v3.2.0
 [1.1.0-beta]: https://github.com/your-org/student-check/compare/v1.0.0...v1.1.0-beta
 [1.0.0]: https://github.com/your-org/student-check/releases/tag/v1.0.0

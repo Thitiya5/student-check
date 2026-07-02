@@ -48,7 +48,8 @@ export async function flushPendingAttendance() {
           classKey: item.classKey,
           teacherName: item.teacherName,
           attendanceDate: item.attendanceDate,
-          students: item.students
+          students: item.students,
+          markSubmitted: Boolean(item.markSubmitted)
         });
         await syncClassPointTransactions({
           classKey: item.classKey,

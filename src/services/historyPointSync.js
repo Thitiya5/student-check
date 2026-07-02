@@ -69,6 +69,8 @@ export async function resyncPointsForClassDay(opts) {
         status,
         disciplineReturnedBy: rec.disciplineReturnedBy || '',
         disciplineReturnedAt: rec.disciplineReturnedAt || null,
+        bulkRestoreId: rec.bulkRestoreId || '',
+        disciplineRestoreReason: rec.disciplineRestoreReason || '',
         ...disciplineEntryToFirestore(parsed)
       };
     }),

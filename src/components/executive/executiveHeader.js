@@ -25,10 +25,17 @@ function formatExecutiveTimestamp(iso) {
  *   filters: import('../../hooks/executive/useExecutiveFilters.js').ExecutiveFilters,
  *   todayLabel: string,
  *   lastUpdated?: string|null,
- *   loading?: boolean
+ *   loading?: boolean,
+ *   refreshing?: boolean
  * }} opts
  */
-export function renderExecutiveHeader({ filters, todayLabel, lastUpdated = null, loading = false }) {
+export function renderExecutiveHeader({
+  filters,
+  todayLabel,
+  lastUpdated = null,
+  loading = false,
+  refreshing = false
+}) {
   const academicYear = String(filters.academicYear || '').trim();
   const semester = String(filters.semester || '').trim();
   const semesterLabel = semester
@@ -46,7 +53,19 @@ export function renderExecutiveHeader({ filters, todayLabel, lastUpdated = null,
       <img class="exec-header__logo" src="${escapeHtml(SCHOOL_LOGO_SRC)}" alt="" width="48" height="48" decoding="async" />
       <div class="exec-header__brand-text">
         <p class="exec-header__school">${escapeHtml(SCHOOL_NAME_TH)}</p>
-        <h1 class="exec-header__title">${escapeHtml(t('executive.title'))}</h1>
+        <div class="exec-header__title-row">
+          <h1 class="exec-header__title">${escapeHtml(t('executive.title'))}</h1>
+          <button
+            type="button"
+            class="exec-header__refresh"
+            id="exec-refresh-btn"
+            aria-label="${escapeHtml(t('executive.header.refreshAria'))}"
+            ${loading || refreshing ? 'disabled' : ''}
+          >
+            <span class="exec-header__refresh-icon${refreshing ? ' is-spinning' : ''}" aria-hidden="true">↻</span>
+            <span>${escapeHtml(t('executive.header.refresh'))}</span>
+          </button>
+        </div>
       </div>
     </div>
     <div class="exec-header__meta">
@@ -68,4 +87,14 @@ export function renderExecutiveHeader({ filters, todayLabel, lastUpdated = null,
       </div>
     </div>
   </header>`;
+}
+
+/**
+ * @param {ParentNode} container
+ * @param {{ onRefresh?: () => void }} [opts]
+ */
+export function bindExecutiveHeader(container, { onRefresh } = {}) {
+  container.querySelector('#exec-refresh-btn')?.addEventListener('click', () => {
+    onRefresh?.();
+  });
 }

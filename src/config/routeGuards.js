@@ -29,8 +29,8 @@ export const ROUTE_GUARDS = [
   },
   {
     paths: ['/executive'],
-    allow: (session) => isExecutiveEnabled() && isAdminSession(session),
-    messageKey: 'admin.denied'
+    allow: (session) => isExecutiveEnabled() && Boolean(session),
+    messageKey: 'toast.loginRequired'
   },
   {
     paths: ['/admin-discipline'],

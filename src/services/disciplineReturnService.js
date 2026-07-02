@@ -12,6 +12,8 @@ import { syncClassPointTransactions } from './studentPointsService.js';
 import { classKeyToParts } from './teacherAuth.js';
 import { initAppSettings } from './appSettingsService.js';
 
+export const INSPECTION_DISCIPLINE_FLAG_IDS = ['uniform', 'hair', 'nails', 'accessories'];
+
 /**
  * @param {object} opts
  * @param {(ctx: {
@@ -21,7 +23,15 @@ import { initAppSettings } from './appSettingsService.js';
  *   rec: object|undefined,
  *   disc: ReturnType<typeof emptyDisciplineEntry>,
  *   flags: string[],
- * }) => { flags?: string[], disciplineWaived?: boolean, disciplineReturnedBy?: string, disciplineReturnedAt?: string|null }} opts.mutate
+ * }) => {
+ *   flags?: string[],
+ *   disciplineWaived?: boolean,
+ *   disciplineReturnedBy?: string,
+ *   disciplineReturnedAt?: string|null,
+ *   bulkRestoreId?: string,
+ *   disciplineRestoreReason?: string
+ * }} opts.mutate
+ * @param {Set<string>} [opts.targetStudentIds]
  */
 async function applyDisciplineChangeForClass(opts) {
   await initAppSettings();
@@ -30,8 +40,12 @@ async function applyDisciplineChangeForClass(opts) {
   const sid = String(opts.studentId || '');
   const date = String(opts.date || '');
   const teacherName = String(opts.teacherName || '');
+  const targetStudentIds = opts.targetStudentIds || null;
 
-  if (!parts.level || !parts.room || !sid || !date) {
+  if (!parts.level || !parts.room || !date) {
+    throw new Error('Invalid class, student, or date');
+  }
+  if (!targetStudentIds && !sid) {
     throw new Error('Invalid class, student, or date');
   }
 
@@ -53,14 +67,19 @@ async function applyDisciplineChangeForClass(opts) {
 
     let disciplineReturnedBy = String(rec?.disciplineReturnedBy || '');
     let disciplineReturnedAt = rec?.disciplineReturnedAt || null;
+    let bulkRestoreId = String(rec?.bulkRestoreId || '');
+    let disciplineRestoreReason = String(rec?.disciplineRestoreReason || '');
 
-    if (studentId === sid) {
+    const shouldMutate = targetStudentIds ? targetStudentIds.has(studentId) : studentId === sid;
+    if (shouldMutate) {
       const next = opts.mutate({ studentId, status, parsed, rec, disc, flags });
       if (next.flags) flags = normalizeDisciplineFlags(next.flags);
       disc.flags = flags;
       if (next.disciplineWaived !== undefined) disc.disciplineWaived = next.disciplineWaived;
       if (next.disciplineReturnedBy !== undefined) disciplineReturnedBy = next.disciplineReturnedBy;
       if (next.disciplineReturnedAt !== undefined) disciplineReturnedAt = next.disciplineReturnedAt;
+      if (next.bulkRestoreId !== undefined) bulkRestoreId = next.bulkRestoreId;
+      if (next.disciplineRestoreReason !== undefined) disciplineRestoreReason = next.disciplineRestoreReason;
     }
 
     return {
@@ -71,6 +90,8 @@ async function applyDisciplineChangeForClass(opts) {
       status,
       disciplineReturnedBy,
       disciplineReturnedAt,
+      bulkRestoreId,
+      disciplineRestoreReason,
       ...disciplineEntryToFirestore(disc)
     };
   });
@@ -144,7 +165,53 @@ export async function restoreDisciplinePointsForStudent(opts) {
       flags: resolveDisciplineFlagsForScoring(status, opts.date, flags, { disciplineWaived: false }),
       disciplineWaived: false,
       disciplineReturnedBy: '',
-      disciplineReturnedAt: null
+      disciplineReturnedAt: null,
+      bulkRestoreId: '',
+      disciplineRestoreReason: ''
     })
+  });
+}
+
+/**
+ * Bulk return inspection discipline flags for many students in one class/day save.
+ * @param {{
+ *   classKey: string,
+ *   date: string,
+ *   teacherName: string,
+ *   bulkRestoreId: string,
+ *   restoreReason: string,
+ *   returnedAt?: string,
+ *   targets: Array<{ studentId: string, flagIds?: string[] }>
+ * }} opts
+ */
+export async function bulkReturnDisciplinePointsForClass(opts) {
+  const targets = Array.isArray(opts.targets) ? opts.targets : [];
+  if (!targets.length) return;
+
+  const targetStudentIds = new Set(targets.map((t) => String(t.studentId)));
+  const flagIdsByStudent = new Map(
+    targets.map((t) => [String(t.studentId), new Set((t.flagIds || INSPECTION_DISCIPLINE_FLAG_IDS).map(String))])
+  );
+  const returnedAt = String(opts.returnedAt || new Date().toISOString());
+  const bulkRestoreId = String(opts.bulkRestoreId || '');
+  const restoreReason = String(opts.restoreReason || '');
+
+  await applyDisciplineChangeForClass({
+    classKey: opts.classKey,
+    date: opts.date,
+    teacherName: opts.teacherName,
+    targetStudentIds,
+    mutate: ({ studentId, flags }) => {
+      const removeSet = flagIdsByStudent.get(studentId) || new Set(INSPECTION_DISCIPLINE_FLAG_IDS);
+      const nextFlags = normalizeDisciplineFlags(flags).filter((flagId) => !removeSet.has(flagId));
+      return {
+        flags: nextFlags,
+        disciplineWaived: true,
+        disciplineReturnedBy: String(opts.teacherName || ''),
+        disciplineReturnedAt: returnedAt,
+        bulkRestoreId,
+        disciplineRestoreReason: restoreReason
+      };
+    }
   });
 }

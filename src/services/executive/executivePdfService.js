@@ -338,7 +338,7 @@ function buildExecutivePdfPages({ data, filters }) {
  * }} opts
  */
 export async function exportExecutiveDashboardPdf(opts) {
-  if (!canExportExecutivePdf(opts.data)) {
+  if (!canExportExecutivePdf(opts.data, opts.session)) {
     throw new Error(t('executive.export.failed'));
   }
 
