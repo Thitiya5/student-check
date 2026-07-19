@@ -2,7 +2,8 @@ import { t } from '../../i18n/index.js';
 import { formatDateWithDayThai } from '../../components/datePicker.js';
 import { getTodayDate } from '../../utils/dateIso.js';
 import { escapeHtml } from '../../utils/html.js';
-import { getExecutiveDashboardBundle } from '../../services/executive/executiveAttendanceService.js';
+import { getExecutiveDashboardBundle, tryGetExecutiveDashboardBundleFromCache } from '../../services/executive/executiveAttendanceService.js';
+import { perfMarkEnd, perfMarkStart } from '../../utils/perfTrace.js';
 import { createExecutiveFilters } from '../../hooks/executive/useExecutiveFilters.js';
 import { renderExecutiveHeader, bindExecutiveHeader } from '../../components/executive/executiveHeader.js';
 import { renderExecutiveCompletionProgress } from '../../components/executive/executiveCompletionProgress.js';
@@ -125,6 +126,24 @@ export function renderExecutiveDashboardPage(container, { state, onToast } = {})
     } else if (forceRefresh) {
       refreshing = true;
       renderShell({ filters, data: lastRenderedData, loading: false, isRefreshing: true });
+    } else {
+      const instant = tryGetExecutiveDashboardBundleFromCache(session, {
+        date,
+        grade: filters.grade,
+        room: filters.room
+      });
+      if (instant) {
+        lastRenderedData = {
+          summary: instant.summary,
+          comparisonTable: instant.comparisonTable,
+          insights: instant.insights,
+          completion: instant.completion,
+          charts: instant.charts,
+          lastUpdated: instant.lastUpdated,
+          error: null
+        };
+        renderShell({ filters, data: lastRenderedData, loading: false, isRefreshing: false });
+      }
     }
 
     const data = await loadData(filters, { forceRefresh });
@@ -132,12 +151,14 @@ export function renderExecutiveDashboardPage(container, { state, onToast } = {})
     if (!data) return;
     lastRenderedData = data;
     renderShell({ filters, data, loading: false, isRefreshing: false });
+    perfMarkEnd('executive-dashboard', { date, cached: hasWarmCache && !forceRefresh });
   }
 
   filterStore.subscribe(() => {
     void refresh();
   });
 
+  perfMarkStart('executive-dashboard');
   void refresh();
 
   container.__executiveCleanup = () => {

@@ -91,15 +91,18 @@ export function peekStudentsByClass(level, room) {
 
   const key = classCacheKey(lvl, rm);
   if (studentsByClassCache.has(key)) {
-    const list = studentsByClassCache.get(key);
-    if (Array.isArray(list)) {
-      const meta = readLsEntryMeta(STUDENTS_LS_PREFIX + key);
-      return {
-        students: list,
-        fromCache: true,
-        cacheAgeMs: meta ? Date.now() - meta.t : null
-      };
+    const meta = readLsEntryMeta(STUDENTS_LS_PREFIX + key);
+    if (meta && Date.now() - meta.t <= CACHE_TTL_MS) {
+      const list = studentsByClassCache.get(key);
+      if (Array.isArray(list)) {
+        return {
+          students: list,
+          fromCache: true,
+          cacheAgeMs: Date.now() - meta.t
+        };
+      }
     }
+    studentsByClassCache.delete(key);
   }
 
   const meta = readLsEntryMeta(STUDENTS_LS_PREFIX + key);

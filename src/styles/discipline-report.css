@@ -160,8 +160,21 @@
   cursor: pointer;
 }
 
-.disc-report-edit-link {
+.disc-report-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
   margin-left: auto;
+}
+
+.disc-report-export-btn {
+  width: auto;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.disc-report-edit-link {
   width: auto;
   text-decoration: none;
   font-size: 0.8rem;

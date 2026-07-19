@@ -9,7 +9,8 @@ import {
   summarizeExecutiveByRoom,
   summarizeExecutiveDay
 } from '../../utils/executive/executiveAggregates.js';
-import { fetchExecutiveDayContext } from './executiveDayContext.js';
+import { fetchExecutiveDayContext, buildExecutiveDayContextFromCacheEntry } from './executiveDayContext.js';
+import { peekSchoolOverviewCache } from './schoolOverviewCache.js';
 import {
   deriveOperationalStatus,
   findLastCompletedRoom,
@@ -127,12 +128,10 @@ export async function getAttendanceRate(session, opts = {}) {
 }
 
 /**
- * Single-load bundle for executive dashboard (one roster + one Firestore query).
- * @param {import('../teacherAuth.js').TeacherAuthSession|null|undefined} session
- * @param {{ date?: string, grade?: string, room?: string, forceRefresh?: boolean }} [opts]
+ * Build dashboard bundle from an already-loaded day context (sync).
+ * @param {Awaited<ReturnType<typeof fetchExecutiveDayContext>>} ctx
  */
-export async function getExecutiveDashboardBundle(session, opts = {}) {
-  const ctx = await fetchExecutiveDayContext(session, opts);
+export function buildExecutiveDashboardBundleFromContext(ctx) {
   const summary = summarizeExecutiveDay(ctx.roster, ctx.rows, ctx.filters);
   const grades = ctx.filters.grade
     ? [ctx.filters.grade]
@@ -191,6 +190,30 @@ export async function getExecutiveDashboardBundle(session, opts = {}) {
     lastUpdated: ctx.lastUpdated,
     date: ctx.date
   };
+}
+
+/**
+ * Instant bundle from school overview cache — no network when cache is warm.
+ * @param {import('../teacherAuth.js').TeacherAuthSession|null|undefined} session
+ * @param {{ date?: string, grade?: string, room?: string }} [opts]
+ */
+export function tryGetExecutiveDashboardBundleFromCache(session, opts = {}) {
+  if (!session) return null;
+  const date = String(opts.date || getTodayDate());
+  const hit = peekSchoolOverviewCache(date);
+  if (!hit) return null;
+  const ctx = buildExecutiveDayContextFromCacheEntry(hit, opts);
+  return buildExecutiveDashboardBundleFromContext(ctx);
+}
+
+/**
+ * Single-load bundle for executive dashboard (one roster + one Firestore query).
+ * @param {import('../teacherAuth.js').TeacherAuthSession|null|undefined} session
+ * @param {{ date?: string, grade?: string, room?: string, forceRefresh?: boolean }} [opts]
+ */
+export async function getExecutiveDashboardBundle(session, opts = {}) {
+  const ctx = await fetchExecutiveDayContext(session, opts);
+  return buildExecutiveDashboardBundleFromContext(ctx);
 }
 
 export { getCompletionStatus, getPendingRooms, getLastCompletedRoom } from './executiveCompletionService.js';

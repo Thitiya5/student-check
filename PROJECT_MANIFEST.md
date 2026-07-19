@@ -9,8 +9,8 @@
 
 | Field | Value |
 |-------|--------|
-| **Governance version** | `v3.2.0` |
-| **package.json** | `3.2.0` |
+| **Governance version** | `v3.2.1` |
+| **package.json** | `3.2.1` |
 | **Recommended next** | `v3.3.0` (Summary Layer + Health Dashboard) |
 
 ---
@@ -19,7 +19,7 @@
 
 | Field | Value |
 |-------|--------|
-| **Last completed** | Closeout 2026-06-20 — P0 attendance + P1 School Overview + P2 bulk restore |
+| **Last completed** | v3.2.1 — Final Stabilization (performance) |
 | **Status** | ✅ Deployed to production |
 | **Next** | Summary / Analytics Layer, Health Dashboard, Load testing |
 
@@ -31,7 +31,8 @@
 |------|--------|
 | **Production app** | Live — https://student-check-th.web.app |
 | **Active users** | Teachers (daily attendance) |
-| **School Overview** | All teachers — read-only, cached reads |
+| School Overview | All teachers — read-only; 3 min cache; warm paint on revisit |
+| Discipline report | Cached reads (4 min); class-scoped detail queries |
 | **Bulk discipline restore** | Admin only — `/admin-discipline` |
 | **Governance docs** | Updated for v3.2.0 |
 
@@ -65,6 +66,7 @@
 
 | Release | Date | Notes |
 |---------|------|-------|
+| **v3.2.1** | 2026-07-19 | Performance: School Overview warm cache, Discipline Report scoped reads |
 | **v3.2.0** | 2026-06-20 | Attendance reliability, School Overview cache, bulk restore |
 | **v1.1.0-beta** | 2026-06-20 | Executive Dashboard Sprints 1–3 |
 | **v1.0.0** | 2025 baseline | Core attendance system |

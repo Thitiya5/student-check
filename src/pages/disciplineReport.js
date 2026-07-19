@@ -2,13 +2,22 @@ import { escapeHtml } from '../utils/html.js';
 import { renderLoading, renderEmpty } from '../utils/ui.js';
 import { t, statusLabel } from '../i18n/index.js';
 import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeader.js';
-import { loadTeacherAuthSession, isSchoolWideViewSession, classKeyToParts } from '../services/teacherAuth.js';
+import {
+  loadTeacherAuthSession,
+  isSchoolWideViewSession,
+  isAdminSession,
+  classKeyToParts
+} from '../services/teacherAuth.js';
+import { canExportDisciplineReportPdf } from '../services/discipline/disciplinePdfExportGate.js';
 import {
   defaultReportYearMonth,
   loadDisciplineReportOverview,
   loadClassDisciplineDetail,
-  canViewDisciplineReportSession
+  canViewDisciplineReportSession,
+  peekDisciplineReportOverview,
+  peekDisciplineReportDetail
 } from '../services/disciplineReportService.js';
+import { perfMarkEnd, perfMarkStart } from '../utils/perfTrace.js';
 import { getDisciplineChecks } from '../data/disciplineChecks.js';
 import { getTodayDate } from '../utils/dateIso.js';
 import { formatDateWithDayThai } from '../components/datePicker.js';
@@ -45,14 +54,19 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
   }
 
   const schoolWide = isSchoolWideViewSession(session);
+  const isAdmin = isAdminSession(session);
   const today = getTodayDate();
   let yearMonth = defaultReportYearMonth(today);
   /** @type {string|null} */
   let selectedClass = null;
   /** @type {Awaited<ReturnType<typeof loadDisciplineReportOverview>>|null} */
   let overview = null;
+  /** @type {Awaited<ReturnType<typeof loadClassDisciplineDetail>>|null} */
+  let currentDetail = null;
   let loadSeq = 0;
 
+  perfMarkStart('discipline-report');
+  const warmOverview = peekDisciplineReportOverview(session, yearMonth);
   container.classList.add('discipline-report-page');
   container.innerHTML = `${renderPageHeader({
     title: t('disciplineReport.title'),
@@ -71,7 +85,7 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
       </div>
     </div>
   </section>
-  <div id="discRepBody">${renderLoading(t('disciplineReport.loading'))}</div>`;
+  <div id="discRepBody">${warmOverview ? '' : renderLoading(t('disciplineReport.loading'))}</div>`;
 
   bindPageHeaderActions(container, {
     onBack: () => (selectedClass ? showOverview() : onBack?.('/dashboard')),
@@ -154,13 +168,57 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
     return `${renderSummaryCards()}${renderClassGrid()}`;
   }
 
+  function bindDisciplinePdfExport(detail) {
+    const btn = body?.querySelector('#discRepExportPdf');
+    if (!(btn instanceof HTMLButtonElement)) return;
+
+    if (!canExportDisciplineReportPdf(detail, session)) {
+      return;
+    }
+
+    btn.replaceWith(btn.cloneNode(true));
+    const freshBtn = body?.querySelector('#discRepExportPdf');
+    if (!(freshBtn instanceof HTMLButtonElement)) return;
+
+    freshBtn.addEventListener('click', async () => {
+      if (!canExportDisciplineReportPdf(currentDetail, session) || freshBtn.disabled) {
+        onToast?.(t('pdf.exportDenied'));
+        return;
+      }
+
+      freshBtn.disabled = true;
+      freshBtn.setAttribute('aria-busy', 'true');
+      const prevLabel = freshBtn.textContent;
+      freshBtn.textContent = t('pdf.exporting');
+
+      try {
+        const { exportDisciplineReportPdf } = await import('../services/discipline/disciplinePdfService.js');
+        await exportDisciplineReportPdf({ detail: currentDetail, session });
+        onToast?.(t('pdf.exportDone'));
+      } catch (err) {
+        onToast?.(err?.message || t('pdf.exportFailed'));
+      } finally {
+        freshBtn.disabled = false;
+        freshBtn.removeAttribute('aria-busy');
+        freshBtn.textContent = prevLabel || t('disciplineReport.pdf.export');
+      }
+    });
+  }
+
   async function renderClassDetail(classKey) {
     if (!overview?.primaryDate || !body) return;
-    body.innerHTML = renderLoading(t('disciplineReport.loadingClass'));
+    const warmDetail = peekDisciplineReportDetail(classKey, overview.primaryDate);
+    if (!warmDetail) {
+      body.innerHTML = renderLoading(t('disciplineReport.loadingClass'));
+    }
+    currentDetail = null;
     const seq = ++loadSeq;
     try {
-      const detail = await loadClassDisciplineDetail(session, classKey, overview.primaryDate);
+      const detail = await loadClassDisciplineDetail(session, classKey, overview.primaryDate, {
+        cachedRows: overview.allRows ?? null
+      });
       if (seq !== loadSeq) return;
+      currentDetail = detail;
 
       const rules = getDisciplineChecks();
       const headCols = rules
@@ -193,6 +251,10 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
       const editLabel = schoolWide
         ? t('disciplineReport.editInspection')
         : t('disciplineReport.editCheck');
+      const exportBtnHtml =
+        isAdmin && canExportDisciplineReportPdf(detail, session)
+          ? `<button type="button" class="button-primary disc-report-export-btn" id="discRepExportPdf">${escapeHtml(t('disciplineReport.pdf.export'))}</button>`
+          : '';
 
       body.innerHTML = `<section class="disc-report-detail glass-card">
         <div class="disc-report-detail__head">
@@ -201,7 +263,10 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
             <h2 class="disc-report-detail__title">${escapeHtml(classKey)}</h2>
             <p class="disc-report-detail__sub">${escapeHtml(formatDateWithDayThai(overview.primaryDate))}</p>
           </div>
-          <a class="button-secondary disc-report-edit-link" href="${editHref}">${escapeHtml(editLabel)} →</a>
+          <div class="disc-report-detail__actions">
+            ${exportBtnHtml}
+            <a class="button-secondary disc-report-edit-link" href="${editHref}">${escapeHtml(editLabel)} →</a>
+          </div>
         </div>
         <div class="disc-report-table-wrap">
           <table class="disc-report-table">
@@ -221,6 +286,7 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
       </section>`;
 
       body.querySelector('#discRepBackBtn')?.addEventListener('click', () => showOverview());
+      bindDisciplinePdfExport(detail);
     } catch (err) {
       if (seq !== loadSeq) return;
       body.innerHTML = renderEmpty(t('disciplineReport.loadFailed'), err?.message || '');
@@ -240,6 +306,7 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
 
   function showOverview() {
     selectedClass = null;
+    currentDetail = null;
     if (!body || !overview) return;
     body.innerHTML = renderOverviewHtml();
     bindClassGrid();
@@ -255,13 +322,17 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
   async function loadOverview() {
     yearMonth = monthInput?.value || yearMonth;
     if (!body) return;
-    body.innerHTML = renderLoading(t('disciplineReport.loading'));
+    const warm = peekDisciplineReportOverview(session, yearMonth);
+    if (!warm) {
+      body.innerHTML = renderLoading(t('disciplineReport.loading'));
+    }
     selectedClass = null;
     const seq = ++loadSeq;
     try {
       overview = await loadDisciplineReportOverview(session, yearMonth);
       if (seq !== loadSeq) return;
       showOverview();
+      perfMarkEnd('discipline-report', { yearMonth, cached: Boolean(warm) });
     } catch (err) {
       if (seq !== loadSeq) return;
       body.innerHTML = renderEmpty(t('disciplineReport.loadFailed'), err?.message || '');
@@ -272,6 +343,10 @@ export function renderDisciplineReportPage(container, { state = {}, onToast, onL
   container.querySelector('#discRepLoadBtn')?.addEventListener('click', () => void loadOverview());
   monthInput?.addEventListener('change', () => void loadOverview());
 
+  if (warmOverview) {
+    overview = warmOverview;
+    showOverview();
+  }
   void loadOverview();
 
   container.__disciplineReportCleanup = () => {

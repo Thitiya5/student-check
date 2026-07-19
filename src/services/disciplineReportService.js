@@ -1,5 +1,9 @@
-import { buildAttendanceClassKey } from './attendanceService.js';
-import { queryAttendanceByDateForSession } from './attendanceService.js';
+import {
+  buildAttendanceClassKey,
+  getAttendanceForClassOnDate,
+  queryAttendanceByDateForSession,
+  queryAttendanceByDateSchoolWide
+} from './attendanceService.js';
 import {
   getDisciplineChecks,
   normalizeDisciplineFlags,
@@ -15,11 +19,19 @@ import {
 } from './appSettingsService.js';
 import {
   getViewClassKeys,
+  isAdminSession,
   isSchoolWideViewSession,
   classKeyToParts
 } from './teacherAuth.js';
-import { fetchLevelOptions, fetchRoomOptions } from './studentsService.js';
+import { fetchLevelOptions, fetchRoomOptions, fetchStudentsByClass } from './studentsService.js';
 import { getTodayDate } from '../utils/dateIso.js';
+import { peekSchoolOverviewCache } from './executive/schoolOverviewCache.js';
+import {
+  disciplineDetailCacheKey,
+  disciplineOverviewCacheKey,
+  fetchDisciplineReportWithCache,
+  peekDisciplineReportCache
+} from './discipline/disciplineReportCache.js';
 
 /** @typedef {'not_recorded'|'recorded'|'partial'} ClassRecordStatus */
 
@@ -171,25 +183,30 @@ export function buildClassDisciplineMatrix(students, classRecords, inspectionDat
 }
 
 /**
+ * Reuse School Overview attendance cache for admin when inspection date matches.
  * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
- * @param {string} yearMonth YYYY-MM
+ * @param {string} date
  */
-export async function loadDisciplineReportOverview(session, yearMonth) {
-  await initAppSettings();
-  const inspectionDates = getInspectionDatesForMonth(yearMonth);
-  const classKeys = await listReportClassKeys(session);
-  if (!inspectionDates.length || !classKeys.length) {
-    return {
-      yearMonth,
-      inspectionDates,
-      classKeys,
-      classes: [],
-      summary: { total: classKeys.length, recorded: 0, partial: 0, notRecorded: classKeys.length }
-    };
+async function loadAttendanceRowsForDiscipline(session, date) {
+  if (isAdminSession(session)) {
+    const shared = peekSchoolOverviewCache(date);
+    if (shared?.allRows) {
+      return shared.allRows;
+    }
+    const rows = await queryAttendanceByDateSchoolWide(date);
+    return rows;
   }
+  return queryAttendanceByDateForSession(session, date);
+}
 
-  const primaryDate = inspectionDates[0];
-  const allRows = await queryAttendanceByDateForSession(session, primaryDate);
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
+ * @param {string} yearMonth
+ * @param {string[]} classKeys
+ * @param {string} primaryDate
+ * @param {Array<object>} allRows
+ */
+function buildOverviewFromRows(yearMonth, inspectionDates, classKeys, primaryDate, allRows) {
   const deduped = dedupeAttendanceByClassStudent(allRows);
 
   /** @type {Array<{ classKey: string, status: ClassRecordStatus, recordCount: number, failCount: number, absentCount: number }>} */
@@ -226,30 +243,109 @@ export async function loadDisciplineReportOverview(session, yearMonth) {
     primaryDate,
     classKeys,
     classes,
+    allRows,
     summary: { total: classKeys.length, recorded, partial, notRecorded }
   };
 }
 
 /**
  * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
+ * @param {string} yearMonth YYYY-MM
+ * @param {{ forceRefresh?: boolean }} [opts]
+ */
+export async function loadDisciplineReportOverview(session, yearMonth, opts = {}) {
+  const cacheKey = disciplineOverviewCacheKey(yearMonth, session);
+  if (!opts.forceRefresh) {
+    const cached = peekDisciplineReportCache(cacheKey);
+    if (cached) return cached;
+  }
+
+  return fetchDisciplineReportWithCache(
+    cacheKey,
+    async () => {
+      await initAppSettings();
+      const inspectionDates = getInspectionDatesForMonth(yearMonth);
+      const classKeys = await listReportClassKeys(session);
+      if (!inspectionDates.length || !classKeys.length) {
+        return {
+          yearMonth,
+          inspectionDates,
+          classKeys,
+          classes: [],
+          allRows: [],
+          summary: { total: classKeys.length, recorded: 0, partial: 0, notRecorded: classKeys.length }
+        };
+      }
+
+      const primaryDate = inspectionDates[0];
+      const allRows = await loadAttendanceRowsForDiscipline(session, primaryDate);
+      return buildOverviewFromRows(yearMonth, inspectionDates, classKeys, primaryDate, allRows);
+    },
+    { forceRefresh: Boolean(opts.forceRefresh) }
+  );
+}
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
  * @param {string} classKey
  * @param {string} inspectionDate
+ * @param {{ cachedRows?: Array<object>|null, forceRefresh?: boolean }} [opts]
  */
-export async function loadClassDisciplineDetail(session, classKey, inspectionDate) {
-  await initAppSettings();
-  const { level, room } = classKeyToParts(classKey);
-  const { fetchStudentsByClass } = await import('./studentsService.js');
-  const students = level && room ? await fetchStudentsByClass(level, room) : [];
-  const rows = await queryAttendanceByDateForSession(session, inspectionDate);
-  const classRows = rows.filter((r) => String(r.class) === classKey);
-  const deduped = dedupeAttendanceByClassStudent(classRows);
-  const records = [...deduped.values()];
-  const matrix = buildClassDisciplineMatrix(students, records, inspectionDate);
-  return { classKey, inspectionDate, students: matrix, rosterSize: students.length };
+export async function loadClassDisciplineDetail(session, classKey, inspectionDate, opts = {}) {
+  const detailKey = disciplineDetailCacheKey(classKey, inspectionDate);
+  if (!opts.forceRefresh) {
+    const cached = peekDisciplineReportCache(detailKey);
+    if (cached) return cached;
+  }
+
+  return fetchDisciplineReportWithCache(
+    detailKey,
+    async () => {
+      await initAppSettings();
+      const { level, room } = classKeyToParts(classKey);
+
+      let classRowsPromise;
+      if (Array.isArray(opts.cachedRows) && opts.cachedRows.length) {
+        classRowsPromise = Promise.resolve(
+          opts.cachedRows.filter((r) => String(r.class) === classKey)
+        );
+      } else {
+        classRowsPromise = getAttendanceForClassOnDate(classKey, inspectionDate);
+      }
+
+      const [students, classRows] = await Promise.all([
+        level && room ? fetchStudentsByClass(level, room) : Promise.resolve([]),
+        classRowsPromise
+      ]);
+
+      const deduped = dedupeAttendanceByClassStudent(classRows);
+      const records = [...deduped.values()];
+      const matrix = buildClassDisciplineMatrix(students, records, inspectionDate);
+      return { classKey, inspectionDate, students: matrix, rosterSize: students.length };
+    },
+    { forceRefresh: Boolean(opts.forceRefresh) }
+  );
 }
 
 export function canViewDisciplineReportSession(session) {
   if (!session) return false;
   if (isSchoolWideViewSession(session)) return true;
   return getViewClassKeys(session).length > 0;
+}
+
+/**
+ * Sync peek helpers for pages — no network.
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
+ * @param {string} yearMonth
+ */
+export function peekDisciplineReportOverview(session, yearMonth) {
+  return peekDisciplineReportCache(disciplineOverviewCacheKey(yearMonth, session));
+}
+
+/**
+ * @param {string} classKey
+ * @param {string} inspectionDate
+ */
+export function peekDisciplineReportDetail(classKey, inspectionDate) {
+  return peekDisciplineReportCache(disciplineDetailCacheKey(classKey, inspectionDate));
 }

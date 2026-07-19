@@ -84,6 +84,7 @@ export default defineConfig(({ mode }) => {
             '**/pdfExport-*.js',
             '**/monthlyClassMatrixPdf-*.js',
             '**/executivePdfService-*.js',
+            '**/disciplinePdfService-*.js',
             '**/index.es-*.js',
             '**/purify.es-*.js'
           ],

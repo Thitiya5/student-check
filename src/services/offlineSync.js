@@ -9,6 +9,21 @@ import {
   removePending,
   getPendingCount
 } from './offlineDb.js';
+import { clearSchoolOverviewCache } from './executive/schoolOverviewCache.js';
+import { clearDisciplineReportCache } from './discipline/disciplineReportCache.js';
+
+/**
+ * @param {string} attendanceDate
+ * @param {string} classKey
+ */
+function invalidateReadCachesAfterAttendanceSave(attendanceDate, classKey) {
+  const dateKey = String(attendanceDate || '').trim();
+  if (!dateKey) return;
+  clearSchoolOverviewCache(dateKey);
+  if (classKey) {
+    clearDisciplineReportCache({ inspectionDate: dateKey, classKey: String(classKey) });
+  }
+}
 
 let syncing = false;
 
@@ -58,6 +73,7 @@ export async function flushPendingAttendance() {
           students: item.students
         });
         await removePending(item.id);
+        invalidateReadCachesAfterAttendanceSave(item.attendanceDate, item.classKey);
         synced += 1;
       } catch (err) {
         console.error('[sync] failed for', item.id, err);

@@ -21,6 +21,20 @@ for governance releases documented in [`PROJECT_MANIFEST.md`](PROJECT_MANIFEST.m
 
 ---
 
+## [3.2.1] — 2026-07-19
+
+Performance stabilization — faster School Overview and Discipline Report without business rule changes.
+
+### Performance
+
+- Discipline Report: class-scoped Firestore reads; overview row reuse; 4 min memory/session cache; parallel roster+attendance
+- School Overview: synchronous warm-cache paint; cache invalidation on attendance save and offline queue flush
+- Dashboard: defer semester scores load; reuse API summary object
+- Roster: memory cache honors 24 h localStorage TTL
+- Dev-only route performance tracing (`perfTrace.js`)
+
+---
+
 ## [3.2.0] — 2026-06-20
 
 Stabilization release: attendance save reliability, School Overview for teachers, bulk discipline restore.

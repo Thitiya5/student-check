@@ -377,8 +377,10 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
     }
     try {
       const data = await getDashboardDataForSession(session, today);
-      paintStats(summarizeAttendance(data.rows));
-      await Promise.all([loadScores()]);
+      paintStats(data.summary);
+      requestAnimationFrame(() => {
+        void loadScores();
+      });
       await loadAlerts();
     } catch (err) {
       console.error('[dashboard] load failed', err);

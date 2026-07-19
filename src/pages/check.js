@@ -1,4 +1,4 @@
-﻿import {
+import {
   renderStudentCardListMarkup,
   bindAttendanceStatusPickers,
   bindDisciplinePickers,

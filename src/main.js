@@ -34,6 +34,8 @@ import { recordLoginTime, clearLastLoginTime } from './services/session.js';
 import { verifyFirestoreConnection } from './services/firebaseClient.js';
 import { isGasConfigured, pingGas } from './services/googleAppsScript.js';
 import { clearStudentsCache } from './services/studentsService.js';
+import { clearSchoolOverviewCache } from './services/executive/schoolOverviewCache.js';
+import { clearDisciplineReportCache } from './services/discipline/disciplineReportCache.js';
 import {
   loadTeacherAuthSession,
   canAccessLevelRoom,
@@ -501,6 +503,8 @@ async function submitAttendance(
   };
   saveAppState(state);
   showToast(t('check.saveSuccess'));
+  clearSchoolOverviewCache(dateKey);
+  clearDisciplineReportCache({ inspectionDate: dateKey, classKey });
   runBackgroundPointSync();
 
   if (navigateAfterSave) {
