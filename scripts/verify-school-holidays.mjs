@@ -9,7 +9,9 @@ import {
   getSchoolHoliday,
   isConfiguredSchoolHoliday,
   isAttendanceRequiredDate,
-  countHolidayDays
+  countHolidayDays,
+  getDashboardHolidayReminder,
+  daysUntilDateKey
 } from '../src/utils/schoolHolidays.js';
 import { buildCompletionMeta } from '../src/services/executive/executiveCompletionService.js';
 import {
@@ -141,5 +143,52 @@ assert.equal(historicalMeta.status.completionPercent, 0, 'not presented as atten
 // Edge guards: holiday blocks requirement only; weekday unchanged
 assert.equal(isAttendanceRequiredDate('2026-07-28', settings), true, 'normal weekday unchanged');
 assert.equal(isAttendanceRequiredDate('2026-07-26', settings), false, 'existing weekend behavior unchanged');
+
+const khaoPhansa = {
+  schoolHolidays: normalizeSchoolHolidays([
+    { id: 'khao', name: 'วันเข้าพรรษา', startDate: '2026-07-29', endDate: '2026-07-30' }
+  ])
+};
+
+const multiHolidaySettings = {
+  schoolHolidays: normalizeSchoolHolidays([
+    { id: 'khao', name: 'วันเข้าพรรษา', startDate: '2026-07-29', endDate: '2026-07-30' },
+    { id: 'aug', name: 'Holiday Aug', startDate: '2026-08-05', endDate: '2026-08-05' },
+    { id: 'far', name: 'Far Holiday', startDate: '2026-09-01', endDate: '2026-09-01' }
+  ])
+};
+
+// Dashboard reminder tests
+assert.equal(getDashboardHolidayReminder('2026-07-21', khaoPhansa), null, '1. >7 days away hidden');
+assert.equal(getDashboardHolidayReminder('2026-07-22', khaoPhansa)?.state, 'upcoming', '2. exactly 7 days shown');
+assert.equal(getDashboardHolidayReminder('2026-07-22', khaoPhansa)?.daysUntil, 7);
+assert.equal(getDashboardHolidayReminder('2026-07-26', khaoPhansa)?.daysUntil, 3, '3. 3-day countdown');
+assert.equal(getDashboardHolidayReminder('2026-07-28', khaoPhansa)?.daysUntil, 1, '4. tomorrow countdown');
+assert.equal(getDashboardHolidayReminder('2026-07-29', khaoPhansa)?.state, 'today', '5. starts today');
+assert.equal(getDashboardHolidayReminder('2026-07-30', khaoPhansa)?.state, 'today', '6. second day still current');
+assert.equal(getDashboardHolidayReminder('2026-07-31', khaoPhansa), null, '7. ended yesterday hidden');
+assert.equal(
+  getDashboardHolidayReminder('2026-07-26', multiHolidaySettings)?.holiday.startDate,
+  '2026-07-29',
+  '8. nearest upcoming selected'
+);
+assert.equal(
+  getDashboardHolidayReminder('2026-07-29', multiHolidaySettings)?.state,
+  'today',
+  '9. current holiday wins over future'
+);
+assert.equal(getDashboardHolidayReminder('2026-07-29', emptySettings), null, '10. missing schoolHolidays hidden');
+assert.equal(getDashboardHolidayReminder('2026-07-29', settings)?.holiday.name, 'วันเข้าพรรษา', '11. invalid entries ignored');
+assert.equal(countHolidayDays(getSchoolHoliday('2026-07-29', khaoPhansa)), 2, '12. inclusive multi-day duration');
+
+const sampleRows = [
+  { student_id: 's1', status: 'present' },
+  { student_id: 's2', status: 'absent' }
+];
+const { summarizeAttendance } = await import('../src/services/attendanceService.js');
+const summaryBefore = summarizeAttendance(sampleRows);
+getDashboardHolidayReminder('2026-07-26', khaoPhansa);
+const summaryAfter = summarizeAttendance(sampleRows);
+assert.deepEqual(summaryBefore, summaryAfter, '13. dashboard attendance summary unchanged');
 
 console.log('school-holidays: all checks passed');

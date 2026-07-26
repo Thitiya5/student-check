@@ -1,4 +1,4 @@
-import { formatDateInBangkok, isIsoDateKey, isSchoolDay } from './dateIso.js';
+import { addDaysToDateKey, formatDateInBangkok, isIsoDateKey, isSchoolDay } from './dateIso.js';
 import { getAppSettings } from '../services/appSettingsService.js';
 
 /**
@@ -219,4 +219,108 @@ export function formatHolidayDateRangeLong(holiday, translate) {
  */
 export function formatHolidayBannerTitle(holiday, translate) {
   return translate('check.holidayBannerTitle', { name: holiday.name });
+}
+
+/**
+ * @typedef {'today'|'upcoming'} DashboardHolidayReminderState
+ */
+
+/**
+ * @typedef {object} DashboardHolidayReminder
+ * @property {DashboardHolidayReminderState} state
+ * @property {SchoolHoliday} holiday
+ * @property {number} daysUntil
+ * @property {number} durationDays
+ * @property {string} dateRangeLabel
+ */
+
+/**
+ * Calendar days from fromKey (exclusive progress) until toKey.
+ * @param {string} fromKey yyyy-MM-dd
+ * @param {string} toKey yyyy-MM-dd
+ */
+export function daysUntilDateKey(fromKey, toKey) {
+  const from = String(fromKey || '').trim();
+  const to = String(toKey || '').trim();
+  if (!isIsoDateKey(from) || !isIsoDateKey(to) || from >= to) return 0;
+
+  let count = 0;
+  let cursor = from;
+  while (cursor < to) {
+    count += 1;
+    cursor = addDaysToDateKey(cursor, 1);
+  }
+  return count;
+}
+
+/**
+ * Date/date-range label for dashboard reminder (no duration suffix).
+ * @param {SchoolHoliday} holiday
+ */
+export function formatHolidayDashboardDateRange(holiday) {
+  const start = formatThaiShortDate(holiday.startDate);
+  if (holiday.startDate === holiday.endDate) return start;
+
+  const end = formatThaiShortDate(holiday.endDate);
+  const startParts = start.split(' ');
+  const endParts = end.split(' ');
+  const sameMonthYear = holiday.startDate.slice(0, 7) === holiday.endDate.slice(0, 7);
+  return sameMonthYear
+    ? `${startParts[0]}–${endParts[0]} ${endParts.slice(1).join(' ')}`
+    : `${start} – ${end}`;
+}
+
+/**
+ * Nearest relevant holiday reminder for Dashboard (display only).
+ * Priority: in-progress holiday, then nearest upcoming holiday within window.
+ * @param {string} dateKey yyyy-MM-dd
+ * @param {{ schoolHolidays?: SchoolHoliday[] }} [settings]
+ * @param {number} [reminderWindowDays]
+ * @returns {DashboardHolidayReminder|null}
+ */
+export function getDashboardHolidayReminder(dateKey, settings = getAppSettings(), reminderWindowDays = 7) {
+  const today = String(dateKey || '').trim();
+  if (!isIsoDateKey(today)) return null;
+
+  const holidays = settings?.schoolHolidays || [];
+  if (!holidays.length) return null;
+
+  for (const holiday of holidays) {
+    if (today >= holiday.startDate && today <= holiday.endDate) {
+      return {
+        state: 'today',
+        holiday,
+        daysUntil: 0,
+        durationDays: countHolidayDays(holiday),
+        dateRangeLabel: formatHolidayDashboardDateRange(holiday)
+      };
+    }
+  }
+
+  /** @type {SchoolHoliday|null} */
+  let nearest = null;
+  let nearestDaysUntil = Infinity;
+
+  for (const holiday of holidays) {
+    if (today >= holiday.startDate) continue;
+    const daysUntil = daysUntilDateKey(today, holiday.startDate);
+    if (daysUntil <= 0 || daysUntil > reminderWindowDays) continue;
+    if (
+      daysUntil < nearestDaysUntil ||
+      (daysUntil === nearestDaysUntil && holiday.startDate < String(nearest?.startDate || '9999'))
+    ) {
+      nearest = holiday;
+      nearestDaysUntil = daysUntil;
+    }
+  }
+
+  if (!nearest) return null;
+
+  return {
+    state: 'upcoming',
+    holiday: nearest,
+    daysUntil: nearestDaysUntil,
+    durationDays: countHolidayDays(nearest),
+    dateRangeLabel: formatHolidayDashboardDateRange(nearest)
+  };
 }

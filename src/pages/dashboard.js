@@ -25,6 +25,8 @@ import { getSemesterDateRange } from '../utils/studentAttendanceSummary.js';
 import { parseClassKey } from '../services/attendanceService.js';
 import { formatDisciplineScore } from '../data/disciplineChecks.js';
 import { getTodayDate } from '../utils/dateIso.js';
+import { getAppSettings } from '../services/appSettingsService.js';
+import { getDashboardHolidayReminder } from '../utils/schoolHolidays.js';
 import { t } from '../i18n/index.js';
 import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeader.js';
 
@@ -32,6 +34,43 @@ function dashStatCard(label, value, variant = '') {
   return `<article class="dash-stat ${variant}">
     <span class="dash-stat__label">${escapeHtml(label)}</span>
     <span class="dash-stat__value">${escapeHtml(String(value))}</span>
+  </article>`;
+}
+
+/**
+ * @param {import('../utils/schoolHolidays.js').DashboardHolidayReminder} reminder
+ */
+function renderHolidayReminderCard(reminder) {
+  if (reminder.state === 'today') {
+    return `<article class="dash-holiday-reminder glass-card" role="status" aria-live="polite">
+      <span class="dash-holiday-reminder__icon" aria-hidden="true">📅</span>
+      <div class="dash-holiday-reminder__body">
+        <p class="dash-holiday-reminder__title">${escapeHtml(t('dashboard.holidayTodayTitle'))}</p>
+        <p class="dash-holiday-reminder__name">${escapeHtml(reminder.holiday.name)}</p>
+        <p class="dash-holiday-reminder__range">${escapeHtml(
+          t('dashboard.holidayTodayRange', {
+            range: reminder.dateRangeLabel,
+            days: reminder.durationDays
+          })
+        )}</p>
+        <p class="dash-holiday-reminder__meta">${escapeHtml(t('dashboard.holidayNoAttendanceRequired'))}</p>
+      </div>
+    </article>`;
+  }
+
+  return `<article class="dash-holiday-reminder glass-card" role="status" aria-live="polite">
+    <span class="dash-holiday-reminder__icon" aria-hidden="true">📅</span>
+    <div class="dash-holiday-reminder__body">
+      <p class="dash-holiday-reminder__title">${escapeHtml(t('dashboard.holidayUpcomingTitle'))}</p>
+      <p class="dash-holiday-reminder__name">${escapeHtml(reminder.holiday.name)}</p>
+      <p class="dash-holiday-reminder__range">${escapeHtml(reminder.dateRangeLabel)}</p>
+      <p class="dash-holiday-reminder__meta">${escapeHtml(
+        t('dashboard.holidayUpcomingMeta', {
+          daysUntil: reminder.daysUntil,
+          days: reminder.durationDays
+        })
+      )}</p>
+    </div>
   </article>`;
 }
 
@@ -216,6 +255,8 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       ${renderLoading(t('dashboard.loadingStats'))}
     </section>
 
+    <section class="dash-holiday-reminder-slot" id="dashboardHolidayReminder" hidden aria-label="${escapeHtml(t('dashboard.holidayReminderAria'))}"></section>
+
     <section class="dash-actions ${quickActionsClass}" aria-label="${escapeHtml(t('dashboard.quickMenu'))}">
       ${renderDashboardQuickActions(quickActions)}
     </section>
@@ -238,6 +279,7 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
   bindPageHeaderActions(container, { onLogout });
 
   const statsEl = container.querySelector('#dashboardStats');
+  const holidayReminderEl = container.querySelector('#dashboardHolidayReminder');
   const alertsSection = container.querySelector('#dashboardAlertsSection');
   const alertsEl = container.querySelector('#dashboardAlerts');
   const scoresEl = container.querySelector('#dashboardScores');
@@ -298,6 +340,18 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       console.warn('[dashboard] scores load failed', err);
       scoresEl.innerHTML = renderEmpty(t('dashboard.scoresLoadFailed'), err?.message);
     }
+  }
+
+  function paintHolidayReminder() {
+    if (!holidayReminderEl) return;
+    const reminder = getDashboardHolidayReminder(today, getAppSettings());
+    if (!reminder) {
+      holidayReminderEl.hidden = true;
+      holidayReminderEl.innerHTML = '';
+      return;
+    }
+    holidayReminderEl.hidden = false;
+    holidayReminderEl.innerHTML = renderHolidayReminderCard(reminder);
   }
 
   function paintStats(summary) {
@@ -388,6 +442,8 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       onToast?.(err?.message || t('dashboard.loadFailed'));
     }
   }
+
+  paintHolidayReminder();
 
   void load();
 
