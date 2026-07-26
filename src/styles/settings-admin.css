@@ -118,6 +118,54 @@
   color: #0a7a55;
 }
 
+.settings-holiday-list {
+  list-style: none;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.settings-holiday-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.settings-holiday-item__name {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.settings-holiday-item__meta {
+  margin: 0.15rem 0 0;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.settings-holiday-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.settings-holiday-form {
+  margin-top: 0.35rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.settings-holiday-form__error {
+  color: #b42318;
+}
+
 .settings-admin-footer {
   position: sticky;
   left: 0;

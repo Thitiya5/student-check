@@ -11,7 +11,11 @@ import {
   normalizeAppSettings,
   isInspectionDayFromSettings
 } from '../services/appSettingsService.js';
-import { getTodayDate, parseIsoDateKeys } from '../utils/dateIso.js';
+import { getTodayDate, parseIsoDateKeys, isIsoDateKey } from '../utils/dateIso.js';
+import {
+  formatHolidayDateRangeShort,
+  normalizeSchoolHolidays
+} from '../utils/schoolHolidays.js';
 
 /**
  * @param {HTMLElement} container
@@ -29,6 +33,8 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
   /** @type {import('../services/appSettingsService.js').AppSettings|null} */
   let draft = null;
   let defaults = getDefaultAppSettings();
+  /** @type {string|null} */
+  let editingHolidayId = null;
 
   container.innerHTML = `${renderPageHeader({
     title: t('settingsAdmin.title'),
@@ -148,6 +154,13 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
       </section>
 
       <section class="settings-admin-card glass-card">
+        <h2 class="settings-admin-card__title">${escapeHtml(t('settingsAdmin.holidaysTitle'))}</h2>
+        <p class="settings-admin-card__desc">${escapeHtml(t('settingsAdmin.holidaysDesc'))}</p>
+        <div id="holidayList">${renderHolidayList()}</div>
+        ${renderHolidayForm()}
+      </section>
+
+      <section class="settings-admin-card glass-card">
         <h2 class="settings-admin-card__title">${escapeHtml(t('settingsAdmin.warningTitle'))}</h2>
         <p class="settings-admin-card__desc">${escapeHtml(t('settingsAdmin.warningDesc'))}</p>
         <label class="settings-admin-row field">
@@ -159,6 +172,103 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
 
     if (footer) footer.hidden = false;
     bindForm();
+  }
+
+  function renderHolidayList() {
+    const holidays = draft?.schoolHolidays || [];
+    if (!holidays.length) {
+      return `<p class="settings-admin-row__hint">${escapeHtml(t('settingsAdmin.holidaysEmpty'))}</p>`;
+    }
+    return `<ul class="settings-holiday-list">${holidays
+      .map(
+        (holiday) => `<li class="settings-holiday-item">
+          <div class="settings-holiday-item__body">
+            <p class="settings-holiday-item__name">${escapeHtml(holiday.name)}</p>
+            <p class="settings-holiday-item__meta">${escapeHtml(formatHolidayDateRangeShort(holiday, t))}</p>
+          </div>
+          <div class="settings-holiday-item__actions">
+            <button type="button" class="button-secondary button-secondary--sm" data-holiday-edit="${escapeHtml(holiday.id)}">${escapeHtml(t('settingsAdmin.holidayEdit'))}</button>
+            <button type="button" class="button-secondary button-secondary--sm button-danger" data-holiday-delete="${escapeHtml(holiday.id)}">${escapeHtml(t('settingsAdmin.holidayDelete'))}</button>
+          </div>
+        </li>`
+      )
+      .join('')}</ul>`;
+  }
+
+  function renderHolidayForm() {
+    const editing = editingHolidayId
+      ? (draft?.schoolHolidays || []).find((holiday) => holiday.id === editingHolidayId)
+      : null;
+    return `<div class="settings-holiday-form">
+      <label class="settings-admin-row field">
+        <span class="settings-admin-row__label">${escapeHtml(t('settingsAdmin.holidayName'))}</span>
+        <input type="text" class="input-field" id="holidayName" value="${escapeHtml(editing?.name || '')}" maxlength="120" />
+      </label>
+      <div class="settings-admin-grid">
+        <label class="settings-admin-row field">
+          <span class="settings-admin-row__label">${escapeHtml(t('settingsAdmin.holidayStart'))}</span>
+          <input type="date" class="input-field" id="holidayStart" value="${escapeHtml(editing?.startDate || '')}" />
+        </label>
+        <label class="settings-admin-row field">
+          <span class="settings-admin-row__label">${escapeHtml(t('settingsAdmin.holidayEnd'))}</span>
+          <input type="date" class="input-field" id="holidayEnd" value="${escapeHtml(editing?.endDate || editing?.startDate || '')}" />
+        </label>
+      </div>
+      <div class="settings-admin-actions">
+        <button type="button" class="button-primary button-secondary--sm" id="holidaySaveBtn">${escapeHtml(editing ? t('settingsAdmin.holidayUpdate') : t('settingsAdmin.holidayAdd'))}</button>
+        ${editing ? `<button type="button" class="button-secondary button-secondary--sm" id="holidayCancelBtn">${escapeHtml(t('common.cancel'))}</button>` : ''}
+      </div>
+      <p class="settings-admin-row__hint settings-holiday-form__error" id="holidayFormError" hidden></p>
+    </div>`;
+  }
+
+  function showHolidayFormError(message) {
+    const el = root?.querySelector('#holidayFormError');
+    if (!el) return;
+    el.textContent = message;
+    el.hidden = !message;
+  }
+
+  function readHolidayForm() {
+    const name = String(root.querySelector('#holidayName')?.value || '').trim();
+    const startDate = String(root.querySelector('#holidayStart')?.value || '').trim();
+    const endDate = String(root.querySelector('#holidayEnd')?.value || '').trim();
+    return { name, startDate, endDate };
+  }
+
+  function saveHolidayFromForm() {
+    const { name, startDate, endDate } = readHolidayForm();
+    if (!name) {
+      showHolidayFormError(t('settingsAdmin.holidayNameRequired'));
+      return;
+    }
+    if (!isIsoDateKey(startDate) || !isIsoDateKey(endDate)) {
+      showHolidayFormError(t('settingsAdmin.holidayDateInvalid'));
+      return;
+    }
+    if (startDate > endDate) {
+      showHolidayFormError(t('settingsAdmin.holidayRangeInvalid'));
+      return;
+    }
+
+    const holidays = [...(draft?.schoolHolidays || [])];
+    if (editingHolidayId) {
+      const index = holidays.findIndex((holiday) => holiday.id === editingHolidayId);
+      if (index >= 0) {
+        holidays[index] = { ...holidays[index], name, startDate, endDate };
+      }
+    } else {
+      holidays.push({
+        id: `hol-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        startDate,
+        endDate
+      });
+    }
+
+    draft = normalizeAppSettings({ ...draft, schoolHolidays: normalizeSchoolHolidays(holidays) });
+    editingHolidayId = null;
+    paint();
   }
 
   function readForm() {
@@ -194,7 +304,8 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
       },
       scoring: {
         startingScore: Number(root.querySelector('#scoreStart')?.value)
-      }
+      },
+      schoolHolidays: draft?.schoolHolidays || []
     });
   }
 
@@ -254,6 +365,46 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
     const warnOut = root.querySelector('#warnThresholdOut');
     warnRange?.addEventListener('input', () => {
       if (warnOut) warnOut.textContent = `${warnRange.value}%`;
+    });
+
+    root.querySelector('#holidaySaveBtn')?.addEventListener('click', saveHolidayFromForm);
+    root.querySelector('#holidayCancelBtn')?.addEventListener('click', () => {
+      editingHolidayId = null;
+      paint();
+    });
+    root.querySelector('#holidayStart')?.addEventListener('change', (event) => {
+      const endInput = root.querySelector('#holidayEnd');
+      if (!(endInput instanceof HTMLInputElement)) return;
+      if (!endInput.value) endInput.value = event.target.value;
+    });
+    root.querySelector('#holidayList')?.addEventListener('click', (event) => {
+      const editBtn = event.target.closest('[data-holiday-edit]');
+      const deleteBtn = event.target.closest('[data-holiday-delete]');
+      if (editBtn) {
+        editingHolidayId = editBtn.getAttribute('data-holiday-edit');
+        paint();
+        return;
+      }
+      if (deleteBtn) {
+        const id = deleteBtn.getAttribute('data-holiday-delete');
+        const holiday = (draft?.schoolHolidays || []).find((item) => item.id === id);
+        if (!holiday) return;
+        openConfirmModal({
+          title: t('settingsAdmin.holidayDeleteTitle'),
+          message: t('settingsAdmin.holidayDeleteMessage', { name: holiday.name }),
+          confirmLabel: t('settingsAdmin.holidayDelete'),
+          cancelLabel: t('common.cancel'),
+          danger: true,
+          onConfirm: () => {
+            draft = normalizeAppSettings({
+              ...draft,
+              schoolHolidays: (draft?.schoolHolidays || []).filter((item) => item.id !== id)
+            });
+            if (editingHolidayId === id) editingHolidayId = null;
+            paint();
+          }
+        });
+      }
     });
 
     updateTodayStatus();

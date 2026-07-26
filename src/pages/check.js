@@ -52,7 +52,11 @@ import {
   canAccessLevelRoom,
 } from '../services/teacherAuth.js';
 import { getTodayDate, isSchoolDay, isWeekendDate } from '../utils/dateIso.js';
-import { initAppSettings } from '../services/appSettingsService.js';
+import { initAppSettings, isAttendanceRequiredDate, getSchoolHoliday } from '../services/appSettingsService.js';
+import {
+  formatHolidayBannerTitle,
+  formatHolidayDateRangeLong
+} from '../utils/schoolHolidays.js';
 import { formatDateWithDayThai } from '../components/datePicker.js';
 import { renderPageHeader, renderNavQuickLinks, bindPageHeaderActions } from '../components/pageHeader.js';
 import { withBehaviorQuickLink } from '../utils/quickNavLinks.js';
@@ -60,7 +64,7 @@ import { getHashQuery } from '../services/navigation.js';
 import { resyncPointsForClassDay } from '../services/historyPointSync.js';
 import { openConfirmModal } from '../components/confirmModal.js';
 
-function countStatuses(students, attendance, { weekendView = false } = {}) {
+function countStatuses(students, attendance, { weekendView = false, holidayView = false } = {}) {
   const out = Object.fromEntries(ATTENDANCE_STATUS_KEYS.map((k) => [k, 0]));
   let unchecked = 0;
   for (const s of students) {
@@ -68,6 +72,9 @@ function countStatuses(students, attendance, { weekendView = false } = {}) {
     const hasRecord = Object.prototype.hasOwnProperty.call(attendance, sid);
     if (weekendView && !hasRecord) {
       unchecked += 1;
+      continue;
+    }
+    if (holidayView && !hasRecord) {
       continue;
     }
     const st = normalizeAttendanceStatus(attendance[sid] || CHECK_DEFAULT_STATUS);
@@ -117,6 +124,8 @@ export function renderCheckPage(container, ctx = {}) {
   let baselineDiscipline = {};
   let weekendHasSavedData = false;
   let weekendSavedCount = 0;
+  let holidayHasSavedData = false;
+  let holidaySavedCount = 0;
   let rosterRefreshing = false;
   /** @type {number|null} */
   let rosterCacheAgeMs = null;
@@ -288,7 +297,12 @@ export function renderCheckPage(container, ctx = {}) {
     const row = body?.querySelector('.attendance-summary-row');
     if (!row) return;
     const weekend = isWeekendCheck();
-    row.innerHTML = renderSummaryHtml(countStatuses(students, attendance, { weekendView: weekend }), {
+    const holiday = getActiveHoliday();
+    if (holiday && !holidayHasSavedData) {
+      row.innerHTML = `<div class="attendance-mini attendance-mini--holiday"><div class="k">${escapeHtml(t('check.holidayNoAttendance'))}</div></div>`;
+      return;
+    }
+    row.innerHTML = renderSummaryHtml(countStatuses(students, attendance, { weekendView: weekend, holidayView: Boolean(holiday) }), {
       weekendUncheckedOnly: weekend && !weekendHasSavedData
     });
   }
@@ -307,6 +321,14 @@ export function renderCheckPage(container, ctx = {}) {
     return isWeekendDate(dateKey);
   }
 
+  function getActiveHoliday() {
+    return getSchoolHoliday(dateKey);
+  }
+
+  function canEditAttendance() {
+    return isAttendanceRequiredDate(dateKey);
+  }
+
   function rosterSignature(list) {
     return list
       .map((s) => `${s.student_id}:${s.first_name}:${s.last_name}:${s.number}`)
@@ -320,6 +342,8 @@ export function renderCheckPage(container, ctx = {}) {
       discipline = recordsToDisciplineMap(records);
       weekendHasSavedData = isWeekendCheck() && records.length > 0;
       weekendSavedCount = records.length;
+      holidayHasSavedData = Boolean(getActiveHoliday()) && records.length > 0;
+      holidaySavedCount = records.length;
       return;
     }
     const classKey = buildAttendanceClassKey(level, room);
@@ -328,17 +352,19 @@ export function renderCheckPage(container, ctx = {}) {
     discipline = cached?.discipline ?? {};
     weekendHasSavedData = isWeekendCheck() && Object.keys(attendance).length > 0;
     weekendSavedCount = Object.keys(attendance).length;
+    holidayHasSavedData = Boolean(getActiveHoliday()) && Object.keys(attendance).length > 0;
+    holidaySavedCount = Object.keys(attendance).length;
   }
 
   function prepareStudentAttendanceState() {
-    const weekend = isWeekendCheck();
+    const viewOnly = !canEditAttendance();
     students.forEach((s) => {
       const sid = String(s.student_id);
-      if (!weekend && !attendance[sid]) {
+      if (!viewOnly && !attendance[sid]) {
         attendance[sid] = CHECK_DEFAULT_STATUS;
       }
       if (!discipline[sid]) discipline[sid] = emptyDisciplineEntry();
-      if (weekend) return;
+      if (viewOnly) return;
       if (normalizeAttendanceStatus(attendance[sid]) === 'absent') {
         if (!discipline[sid].disciplineWaived) {
           discipline[sid] = {
@@ -407,24 +433,44 @@ export function renderCheckPage(container, ctx = {}) {
   function renderStudentsUI() {
     if (!body) return;
     const weekend = isWeekendCheck();
-    const canEdit = isSchoolDay(dateKey);
-    const summary = countStatuses(students, attendance, { weekendView: weekend });
+    const holiday = getActiveHoliday();
+    const canEdit = canEditAttendance();
+    const summary = countStatuses(students, attendance, {
+      weekendView: weekend,
+      holidayView: Boolean(holiday)
+    });
     const clearBtn =
       weekend && weekendHasSavedData
         ? `<div class="check-weekend-actions">
              <button type="button" class="button-secondary button-danger check-weekend-clear-btn" id="weekendClearBtn">${escapeHtml(t('check.weekendClearBtn'))}</button>
            </div>`
         : '';
-    const weekendBanner = weekend
-      ? `<div class="check-weekend-panel">
+    const holidayBanner = holiday
+      ? `<div class="check-weekend-panel check-holiday-panel">
+           <p class="check-weekend-banner check-holiday-banner" role="status">${escapeHtml(formatHolidayBannerTitle(holiday, t))}</p>
+           <p class="check-holiday-range">${escapeHtml(formatHolidayDateRangeLong(holiday, t))}</p>
+           ${
+             holidayHasSavedData
+               ? `<p class="check-holiday-existing">${escapeHtml(t('check.holidayExistingRecords', { count: holidaySavedCount }))}</p>`
+               : `<p class="check-holiday-note">${escapeHtml(t('check.holidayNoAttendance'))}</p>`
+           }
+         </div>`
+      : '';
+    const weekendBanner =
+      !holiday && weekend
+        ? `<div class="check-weekend-panel">
            <p class="check-weekend-banner" role="status">${escapeHtml(t('check.weekendBanner'))}</p>
            ${clearBtn}
          </div>`
-      : '';
-    body.innerHTML = `${weekendBanner}<p class="attendance-teacher-line"><strong>${escapeHtml(level)}/${escapeHtml(room)}</strong> ${MIDDOT} ${students.length} ${escapeHtml(t('check.studentsCount'))}</p>
+        : '';
+    body.innerHTML = `${holidayBanner}${weekendBanner}<p class="attendance-teacher-line"><strong>${escapeHtml(level)}/${escapeHtml(room)}</strong> ${MIDDOT} ${students.length} ${escapeHtml(t('check.studentsCount'))}</p>
       <p class="check-roster-status" id="checkRosterStatus" hidden role="status"></p>
       <div class="attendance-summary-row">
-        ${renderSummaryHtml(summary, { weekendUncheckedOnly: weekend && !weekendHasSavedData })}
+        ${
+          holiday && !holidayHasSavedData
+            ? `<div class="attendance-mini attendance-mini--holiday"><div class="k">${escapeHtml(t('check.holidayNoAttendance'))}</div></div>`
+            : renderSummaryHtml(summary, { weekendUncheckedOnly: weekend && !weekendHasSavedData })
+        }
       </div>
       <div class="attendance-tools">
         <input class="input-field attendance-tools__search" id="studentSearch" placeholder="${escapeHtml(t('check.searchPlaceholder'))}" />
@@ -434,7 +480,7 @@ export function renderCheckPage(container, ctx = {}) {
           ${admin || multiClass ? `<button type="button" class="attendance-chip-btn" id="changeClassBtn">${escapeHtml(t('check.changeClass'))}</button>` : ''}
         </div>
       </div>
-      <div class="attendance-students-scroll attendance-students-list" id="studentList">${renderStudentCardListMarkup(students, attendance, discipline, canEdit, ATTENDANCE_STATUS_KEYS, dateKey, { showBehavior: false, weekendView: weekend })}</div>`;
+      <div class="attendance-students-scroll attendance-students-list" id="studentList">${renderStudentCardListMarkup(students, attendance, discipline, canEdit, ATTENDANCE_STATUS_KEYS, dateKey, { showBehavior: false, weekendView: weekend || Boolean(holiday) })}</div>`;
 
 
     footer.hidden = !canEdit;
@@ -706,8 +752,10 @@ export function renderCheckPage(container, ctx = {}) {
 
   container.querySelector('#saveAttendance')?.addEventListener('click', async () => {
     if (!classReady || !students.length) return;
-    if (!isSchoolDay(dateKey)) {
-      onToast?.(t('check.weekendNoSave'));
+    if (!canEditAttendance()) {
+      onToast?.(
+        getActiveHoliday() ? t('check.holidayNoSave') : t('check.weekendNoSave')
+      );
       return;
     }
     if (!assertClassAccess()) return;

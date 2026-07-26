@@ -37,5 +37,7 @@ export const DEFAULT_APP_SETTINGS = {
     startingScore: 100,
     /** คะแนนต่ำกว่านี้ต้องบำเพ็ญประโยชน์ */
     communityServiceThreshold: 60
-  }
+  },
+  /** @type {Array<{ id: string, name: string, startDate: string, endDate: string }>} */
+  schoolHolidays: []
 };

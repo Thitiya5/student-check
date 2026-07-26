@@ -8,14 +8,13 @@ import { initTheme } from './services/theme.js';
 import { renderLoginPage } from './pages/login.js';
 import { renderLoading, showToast } from './utils/ui.js';
 import { escapeHtml } from './utils/html.js';
-import { initAppSettings } from './services/appSettingsService.js';
+import { initAppSettings, isAttendanceRequiredDate, isConfiguredSchoolHoliday } from './services/appSettingsService.js';
 import { syncClassPointTransactions, enrichStudentsForPointSync } from './services/studentPointsService.js';
 import { renderBottomNav } from './components/navbar.js';
 import { openConfirmModal } from './components/confirmModal.js';
 import { loadAppState, saveAppState, getTodayDateKey, getDefaultAppState, STORAGE_KEY } from './data/appState.js';
 import { getRouteAccessDenied } from './config/routeGuards.js';
 import { isExecutiveEnabled } from './config/featureFlags.js';
-import { isSchoolDay } from './utils/dateIso.js';
 import { syncStateToToday, startDayRolloverWatch } from './services/appDay.js';
 import {
   buildAttendanceClassKey,
@@ -400,8 +399,10 @@ async function submitAttendance(
 
   await initAppSettings();
 
-  if (!isSchoolDay(dateKey)) {
-    showToast(t('check.weekendNoSave'));
+  if (!isAttendanceRequiredDate(dateKey)) {
+    showToast(
+      isConfiguredSchoolHoliday(dateKey) ? t('check.holidayNoSave') : t('check.weekendNoSave')
+    );
     return false;
   }
 

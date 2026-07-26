@@ -22,5 +22,6 @@ export function hasSubmittedRoomToday(completion) {
  * @param {import('./executiveChartAggregates.js').ExecutiveChartsData|null|undefined} charts
  */
 export function isExecutiveAttendanceNotStarted(completion, charts) {
+  if (completion?.attendanceRequired === false) return false;
   return !hasSubmittedRoomToday(completion) && !hasSavedAttendanceToday(charts);
 }

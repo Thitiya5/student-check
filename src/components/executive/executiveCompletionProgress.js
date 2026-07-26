@@ -43,6 +43,9 @@ function operationalMessage(operational) {
   if (operational.messageKey === 'executive.completion.statusLow') {
     return t(operational.messageKey, { percent: operational.percent ?? 0 });
   }
+  if (operational.messageKey === 'executive.completion.statusHoliday') {
+    return t(operational.messageKey, { name: operational.holidayName || '—' });
+  }
   return t(operational.messageKey);
 }
 
@@ -76,11 +79,27 @@ export function renderExecutiveCompletionProgress(completion, { loading = false,
 
   const notStarted = !loading && isExecutiveAttendanceNotStarted(completion, charts);
   const noSubmittedRoom = !loading && !hasSubmittedRoomToday(completion);
+  const attendanceNotRequired = !loading && completion?.attendanceRequired === false;
+  const holidayToday = attendanceNotRequired && Boolean(completion?.holiday);
 
   const completionEmptyHtml = `<div class="exec-empty-state">
       <p class="exec-empty-state__icon" aria-hidden="true">📋</p>
       <p class="exec-empty-state__title">${escapeHtml(t('executive.empty.progressTitle'))}</p>
       <p class="exec-empty-state__body">${escapeHtml(t('executive.empty.progressBody'))}</p>
+    </div>`;
+
+  const holidayEmptyHtml = `<div class="exec-empty-state">
+      <p class="exec-empty-state__icon" aria-hidden="true">🏫</p>
+      <p class="exec-empty-state__title">${escapeHtml(t('executive.empty.holidayTitle'))}</p>
+      <p class="exec-empty-state__body">${escapeHtml(
+        t('executive.empty.holidayBody', { name: completion?.holiday?.name || '—' })
+      )}</p>
+    </div>`;
+
+  const nonSchoolDayEmptyHtml = `<div class="exec-empty-state">
+      <p class="exec-empty-state__icon" aria-hidden="true">🏫</p>
+      <p class="exec-empty-state__title">${escapeHtml(t('executive.empty.nonSchoolDayTitle'))}</p>
+      <p class="exec-empty-state__body">${escapeHtml(t('executive.empty.nonSchoolDayBody'))}</p>
     </div>`;
 
   const pendingEmptyHtml = `<div class="exec-empty-state exec-empty-state--compact">
@@ -92,7 +111,7 @@ export function renderExecutiveCompletionProgress(completion, { loading = false,
 
   const pendingList = loading
     ? `<li class="exec-pending-item exec-pending-item--placeholder">…</li>`
-    : notStarted
+    : notStarted || attendanceNotRequired
       ? ''
       : visiblePending.length
         ? visiblePending
@@ -104,7 +123,7 @@ export function renderExecutiveCompletionProgress(completion, { loading = false,
         : `<li class="exec-pending-item exec-pending-item--none">${escapeHtml(t('executive.completion.noPending'))}</li>`;
 
   const moreLine =
-    !loading && !notStarted && hiddenCount > 0
+    !loading && !notStarted && !attendanceNotRequired && hiddenCount > 0
       ? `<p class="exec-pending-more">${escapeHtml(
           t('executive.completion.pendingMore', { count: hiddenCount })
         )}</p>`
@@ -112,19 +131,23 @@ export function renderExecutiveCompletionProgress(completion, { loading = false,
 
   const statusIcon = loading
     ? '…'
-    : notStarted
-      ? '⚪'
-      : operational.level === 'ok'
-        ? '✅'
-        : operational.level === 'critical'
-          ? '🔴'
-          : '🟡';
+    : attendanceNotRequired
+      ? '🏫'
+      : notStarted
+        ? '⚪'
+        : operational.level === 'ok'
+          ? '✅'
+          : operational.level === 'critical'
+            ? '🔴'
+            : '🟡';
   const statusText = loading
     ? t('common.loading')
-    : notStarted
-      ? t('executive.empty.statusNotStarted')
-      : operationalMessage(operational);
-  const statusLevel = notStarted ? 'idle' : operational.level;
+    : attendanceNotRequired
+      ? operationalMessage(operational)
+      : notStarted
+        ? t('executive.empty.statusNotStarted')
+        : operationalMessage(operational);
+  const statusLevel = attendanceNotRequired ? 'ok' : notStarted ? 'idle' : operational.level;
 
   return `<section class="exec-completion" aria-label="${escapeHtml(t('executive.completion.aria'))}">
     <h2 class="exec-section-title">${escapeHtml(t('executive.completion.title'))}</h2>
@@ -134,7 +157,11 @@ export function renderExecutiveCompletionProgress(completion, { loading = false,
         ${
           loading
             ? `<p class="exec-completion-card__percent">…</p>`
-            : noSubmittedRoom
+            : attendanceNotRequired
+              ? holidayToday
+                ? holidayEmptyHtml
+                : nonSchoolDayEmptyHtml
+              : noSubmittedRoom
               ? completionEmptyHtml
               : `<p class="exec-completion-card__headline">
           <span class="exec-completion-card__ratio">${status.checkedRooms} / ${status.totalRooms}</span>
@@ -152,8 +179,10 @@ export function renderExecutiveCompletionProgress(completion, { loading = false,
         ${
           loading
             ? `<p class="exec-completion-card__sub">…</p><ul class="exec-pending-list">${pendingList}</ul>`
-            : notStarted
-              ? pendingEmptyHtml
+            : notStarted || attendanceNotRequired
+              ? attendanceNotRequired
+                ? `<p class="exec-completion-card__sub">${escapeHtml(t('executive.completion.holidayPendingNote'))}</p>`
+                : pendingEmptyHtml
               : `<p class="exec-completion-card__sub">${escapeHtml(t('executive.completion.pendingCount', { count: status.pendingRooms }))}</p>
         <ul class="exec-pending-list">${pendingList}</ul>
         ${moreLine}`

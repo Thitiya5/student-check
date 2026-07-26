@@ -18,6 +18,14 @@ import {
 import { computeScoreFromTransactions, computeAttendancePercentages } from '../utils/pointCalculations.js';
 import { dedupeRecordsByDate } from '../utils/studentAttendanceSummary.js';
 import { attendanceStatusAbbrev, ATTENDANCE_ABBREV, ATTENDANCE_ABBREV_LEGEND } from '../utils/attendanceAbbrev.js';
+import { getAppSettings } from './appSettingsService.js';
+import {
+  buildMonthDayColumns,
+  getMatrixNonAttendanceCellLabel,
+  isMatrixNonAttendanceDay
+} from '../utils/monthMatrixDayColumns.js';
+
+export { buildMonthDayColumns } from '../utils/monthMatrixDayColumns.js';
 
 /**
  * @param {string} yearMonth yyyy-MM
@@ -26,27 +34,6 @@ function lastDayOfMonth(yearMonth) {
   const [y, m] = String(yearMonth).split('-').map(Number);
   const d = new Date(y, m, 0);
   return `${y}-${String(m).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/**
- * @param {string} yearMonth yyyy-MM
- * @returns {{ day: number, dateKey: string, isWeekend: boolean }[]}
- */
-export function buildMonthDayColumns(yearMonth) {
-  const [y, m] = String(yearMonth).split('-').map(Number);
-  const daysInMonth = new Date(y, m, 0).getDate();
-  /** @type {{ day: number, dateKey: string, isWeekend: boolean }[]} */
-  const cols = [];
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const dateKey = `${yearMonth}-${String(day).padStart(2, '0')}`;
-    const dow = new Date(`${dateKey}T12:00:00`).getDay();
-    cols.push({
-      day,
-      dateKey,
-      isWeekend: dow === 0 || dow === 6
-    });
-  }
-  return cols;
 }
 
 /**
@@ -134,13 +121,18 @@ function renderMatrixSchoolHeader(meta) {
 }
 
 /**
- * @param {{ day: number, isWeekend: boolean }[]} dayColumns
+ * @param {{ day: number, isWeekend?: boolean, isHoliday?: boolean }}[] dayColumns
  */
 function renderMatrixTableHead(dayColumns) {
   const dayHeaders = dayColumns
     .map((col) => {
-      const cls = col.isWeekend ? 'pdf-matrix__day pdf-matrix__day--weekend' : 'pdf-matrix__day';
-      return `<th class="${cls}">${col.day}</th>`;
+      const cls = isMatrixNonAttendanceDay(col)
+        ? col.isHoliday
+          ? 'pdf-matrix__day pdf-matrix__day--holiday'
+          : 'pdf-matrix__day pdf-matrix__day--weekend'
+        : 'pdf-matrix__day';
+      const title = col.isHoliday && col.holidayName ? ` title="${escapeHtml(col.holidayName)}"` : '';
+      return `<th class="${cls}"${title}>${col.day}</th>`;
     })
     .join('');
 
@@ -157,16 +149,22 @@ function renderMatrixTableHead(dayColumns) {
 
 /**
  * @param {object} row
- * @param {{ dateKey: string, isWeekend: boolean }[]} dayColumns
+ * @param {{ dateKey: string, isWeekend?: boolean, isHoliday?: boolean, holidayName?: string }[]} dayColumns
  * @param {number} rowIndex
  */
 function renderMatrixBodyRow(row, dayColumns, rowIndex = 0) {
   const alt = rowIndex % 2 === 1 ? ' pdf-matrix__row--alt' : '';
   const dayCells = dayColumns
     .map((col) => {
-      const cls = col.isWeekend ? 'pdf-matrix__day pdf-matrix__day--weekend' : 'pdf-matrix__day';
-      if (col.isWeekend) {
-        return `<td class="${cls}"></td>`;
+      const cls = isMatrixNonAttendanceDay(col)
+        ? col.isHoliday
+          ? 'pdf-matrix__day pdf-matrix__day--holiday'
+          : 'pdf-matrix__day pdf-matrix__day--weekend'
+        : 'pdf-matrix__day';
+      if (isMatrixNonAttendanceDay(col)) {
+        const label = getMatrixNonAttendanceCellLabel(col);
+        const title = col.isHoliday && col.holidayName ? escapeHtml(col.holidayName) : '';
+        return `<td class="${cls}"${title ? ` title="${title}"` : ''}>${escapeHtml(label)}</td>`;
       }
       const status = row.statusByDate.get(col.dateKey);
       const abbrev = status ? attendanceStatusAbbrev(status) : '';
@@ -184,11 +182,11 @@ function renderMatrixBodyRow(row, dayColumns, rowIndex = 0) {
       </tr>`;
 }
 
-/** @param {string} legend @param {string} exportedAt */
-function renderMatrixFooter(legend, exportedAt) {
+/** @param {string} legend @param {string} exportedAt @param {string} [holidayLegend] */
+function renderMatrixFooter(legend, exportedAt, holidayLegend = '') {
   return `<footer class="pdf-matrix__footer">
-      <p><strong>${escapeHtml(t('pdf.matrixLegend'))}:</strong> ${escapeHtml(legend)}</p>
-      <p>${escapeHtml(t('pdf.matrixWeekendNote'))} · ${escapeHtml(t('pdf.exportedAt'))}: ${escapeHtml(exportedAt)}</p>
+      <p><strong>${escapeHtml(t('pdf.matrixLegend'))}:</strong> ${escapeHtml(legend)}${holidayLegend ? ` · ${escapeHtml(holidayLegend)}` : ''}</p>
+      <p>${escapeHtml(t('pdf.matrixWeekendNote'))}${holidayLegend ? ` · ${escapeHtml(t('pdf.matrixHolidayNote'))}` : ''} · ${escapeHtml(t('pdf.exportedAt'))}: ${escapeHtml(exportedAt)}</p>
     </footer>`;
 }
 
@@ -200,6 +198,7 @@ const MATRIX_PDF_STYLES = `
   .pdf-matrix__col-name{border:1px solid #999;padding:3px 4px;text-align:left;font-size:7pt;line-height:1.25;word-wrap:break-word;overflow-wrap:break-word;vertical-align:middle;}
   .pdf-matrix__day{border:1px solid #ccc;padding:1px 0;text-align:center;font-size:6.5pt;line-height:1.1;vertical-align:middle;}
   .pdf-matrix__day--weekend{background:#ececec;}
+  .pdf-matrix__day--holiday{background:#ececec;}
   .pdf-matrix__col-summary{border:1px solid #999;padding:2px 1px;text-align:center;font-size:6pt;line-height:1.15;word-wrap:break-word;overflow-wrap:break-word;vertical-align:middle;}
   .pdf-matrix__row{page-break-inside:avoid;break-inside:avoid;}
   .pdf-matrix__row--alt{background:#f7f7f7;}
@@ -319,7 +318,7 @@ export async function loadMonthlyClassMatrixData(opts) {
   const scoreReports = buildClassScoreReports(attendanceRows, transactions, students);
   const scoreById = new Map(scoreReports.map((r) => [r.studentId, r]));
 
-  const dayColumns = buildMonthDayColumns(yearMonth);
+  const dayColumns = buildMonthDayColumns(yearMonth, getAppSettings());
 
   const rows = students.map((s) => {
     const sid = String(s.student_id);
@@ -373,6 +372,8 @@ export async function exportMonthlyClassMatrixPdf(opts) {
     const abbrev = ATTENDANCE_ABBREV[key];
     return `${abbrev}=${statusLabel(key)}`;
   }).join(' · ');
+  const hasHolidayDays = data.dayColumns.some((col) => col.isHoliday);
+  const holidayLegend = hasHolidayDays ? t('pdf.matrixHolidayLegend') : '';
 
   const headerMeta = {
     monthLabel,
@@ -389,7 +390,9 @@ export async function exportMonthlyClassMatrixPdf(opts) {
   for (let pageIndex = 0; pageIndex < pageChunks.length; pageIndex += 1) {
     const chunk = pageChunks[pageIndex];
     const footer =
-      pageIndex === pageChunks.length - 1 ? renderMatrixFooter(legend, exportedAt) : '';
+      pageIndex === pageChunks.length - 1
+        ? renderMatrixFooter(legend, exportedAt, holidayLegend)
+        : '';
     const pageHtml = buildMatrixPageHtml({
       chunk,
       headerMeta,

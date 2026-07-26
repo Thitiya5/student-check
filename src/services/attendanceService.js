@@ -10,7 +10,8 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from './firebaseClient.js';
-import { getTodayDate, chunkDateRange, isSchoolDay } from '../utils/dateIso.js';
+import { getTodayDate, chunkDateRange } from '../utils/dateIso.js';
+import { isAttendanceRequiredDate, isConfiguredSchoolHoliday } from './appSettingsService.js';
 import { t } from '../i18n/index.js';
 import { normalizeAttendanceStatus } from '../data/attendanceStatuses.js';
 import { parseDisciplineFromRecord } from '../data/disciplineChecks.js';
@@ -434,8 +435,10 @@ export async function saveClassAttendance({
   }
 
   const dateKey = attendanceDate || getTodayDate();
-  if (!isSchoolDay(dateKey)) {
-    throw new Error(t('check.weekendNoSave'));
+  if (!isAttendanceRequiredDate(dateKey)) {
+    throw new Error(
+      isConfiguredSchoolHoliday(dateKey) ? t('check.holidayNoSave') : t('check.weekendNoSave')
+    );
   }
 
   const runSave = async () => {

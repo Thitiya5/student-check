@@ -2,6 +2,13 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './firebaseClient.js';
 import { DEFAULT_APP_SETTINGS } from '../config/appSettingsDefaults.js';
 import { formatDateInBangkok, isIsoDateKey, isSchoolDay, parseIsoDateKeys } from '../utils/dateIso.js';
+import {
+  invalidateSchoolHolidayLookupCache,
+  normalizeSchoolHolidays,
+  getSchoolHoliday,
+  isConfiguredSchoolHoliday,
+  isAttendanceRequiredDate
+} from '../utils/schoolHolidays.js';
 
 const COLLECTION = 'app_settings';
 const DOC_ID = 'school';
@@ -110,6 +117,8 @@ export function normalizeAppSettings(raw) {
     Math.max(0, Number(merged.scoring.communityServiceThreshold) ?? DEFAULT_APP_SETTINGS.scoring.communityServiceThreshold)
   );
 
+  merged.schoolHolidays = normalizeSchoolHolidays(merged.schoolHolidays);
+
   return merged;
 }
 
@@ -147,6 +156,7 @@ export function getAppSettings() {
  */
 function setMemoryCache(settings) {
   memoryCache = normalizeAppSettings(settings);
+  invalidateSchoolHolidayLookupCache();
   writeLocalCache(memoryCache);
 }
 
@@ -499,6 +509,12 @@ export function listUpcomingInspectionDates(settings = getAppSettings(), monthsA
  * @param {AppSettings} [settings]
  * @returns {string[]}
  */
+export {
+  getSchoolHoliday,
+  isConfiguredSchoolHoliday,
+  isAttendanceRequiredDate
+};
+
 export function listInspectionDatesInRange(from, to, settings = getAppSettings()) {
   const start = String(from || '').trim();
   const end = String(to || '').trim();

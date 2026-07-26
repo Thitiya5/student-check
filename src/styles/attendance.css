@@ -47,6 +47,30 @@
   margin-top: 0.35rem;
 }
 
+.check-holiday-panel .check-holiday-banner {
+  color: #0a4a7a;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.check-holiday-range,
+.check-holiday-note,
+.check-holiday-existing {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #475569);
+}
+
+.check-holiday-existing {
+  color: #7a4d00;
+}
+
+.attendance-mini--holiday .k {
+  color: #0a4a7a;
+  font-weight: 650;
+}
+
 .attendance-mini--unchecked .k {
   color: #64748b;
 }

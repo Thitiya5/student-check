@@ -150,6 +150,24 @@ export function summarizeRoomCompletion(states) {
 }
 
 /**
+ * Non-attendance days (weekend or configured holiday): pending is explicitly zero
+ * without treating unsubmitted rooms as completed.
+ * @param {ExecutiveRoomCompletionState[]} states
+ */
+export function summarizeNonRequiredAttendanceDay(states) {
+  const active = activeRoomStates(states);
+  const totalRooms = active.length;
+  const checkedRooms = active.filter((s) => s.submitted).length;
+
+  return {
+    totalRooms,
+    checkedRooms,
+    pendingRooms: 0,
+    completionPercent: 0
+  };
+}
+
+/**
  * @param {ExecutiveRoomCompletionState[]} states
  */
 export function listPendingRooms(states) {
