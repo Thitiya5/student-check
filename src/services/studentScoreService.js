@@ -7,7 +7,29 @@ import { dedupeRecordsByDate, getSemesterDateRange } from '../utils/studentAtten
 import { getStartingScore, getParentMeetingThresholdPercent, getCommunityServiceThreshold } from './appSettingsService.js';
 import { querySemesterAttendanceForSession } from './attendanceService.js';
 import { queryPointsInRangeForSession, queryClassPointsInRange } from './studentPointsService.js';
+import { getHomeroomClassKeys, isSchoolWideViewSession } from './teacherAuth.js';
 import { getTodayDate } from '../utils/dateIso.js';
+
+/** In-memory read-only cache for homeroom dashboard / other callers (5 min). */
+export const SEMESTER_SCORE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** @type {Map<string, { payload: object, cachedAt: number }>} */
+const semesterScoreCache = new Map();
+
+/** @type {Map<string, Promise<object>>} */
+const semesterScoreInflight = new Map();
+
+/**
+ * @param {import('./teacherAuth.js').TeacherAuthSession} session
+ * @param {string} refDate
+ */
+function semesterScoreCacheKey(session, refDate) {
+  const range = getSemesterDateRange(refDate);
+  const scope = isSchoolWideViewSession(session)
+    ? 'school-wide'
+    : getHomeroomClassKeys(session).slice().sort().join('|') || 'none';
+  return `${scope}::${range.from}::${range.to}`;
+}
 
 /**
  * @param {Array<{ student_id: string }>} rows
@@ -360,7 +382,7 @@ async function loadSemesterPointTransactions(session, range, attRows) {
  * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
  * @param {string} [refDate] yyyy-MM-dd
  */
-export async function loadSemesterScoreReportsForSession(session, refDate = getTodayDate()) {
+async function fetchSemesterScoreReportsForSession(session, refDate = getTodayDate()) {
   if (!session) {
     return {
       reports: [],
@@ -389,4 +411,31 @@ export async function loadSemesterScoreReportsForSession(session, refDate = getT
   );
   const byClassDeducted = summarizeDeductedReportsByClass(reports, txnByClass);
   return { reports, transactions: txnRows, range, byClass, byClassDeducted };
+}
+
+export async function loadSemesterScoreReportsForSession(session, refDate = getTodayDate()) {
+  if (!session) {
+    return fetchSemesterScoreReportsForSession(session, refDate);
+  }
+
+  const key = semesterScoreCacheKey(session, refDate);
+  const hit = semesterScoreCache.get(key);
+  if (hit && Date.now() - hit.cachedAt < SEMESTER_SCORE_CACHE_TTL_MS) {
+    return hit.payload;
+  }
+
+  const inflight = semesterScoreInflight.get(key);
+  if (inflight) return inflight;
+
+  const promise = fetchSemesterScoreReportsForSession(session, refDate)
+    .then((payload) => {
+      semesterScoreCache.set(key, { payload, cachedAt: Date.now() });
+      return payload;
+    })
+    .finally(() => {
+      semesterScoreInflight.delete(key);
+    });
+
+  semesterScoreInflight.set(key, promise);
+  return promise;
 }

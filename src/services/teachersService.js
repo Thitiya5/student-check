@@ -19,6 +19,31 @@ import {
   teacherNameMatchScore
 } from './teacherAuth.js';
 
+const TEACHERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const SESSION_VERIFY_SKIP_MS = 5 * 60 * 1000;
+
+/** @type {{ list: ReturnType<typeof normalizeTeacherRow>[], cachedAt: number }|null} */
+let teachersCache = null;
+
+/** @type {Promise<ReturnType<typeof normalizeTeacherRow>[]>|null} */
+let teachersInflight = null;
+
+/** @type {number} */
+let lastSessionVerifiedAt = 0;
+
+export function invalidateTeachersCache() {
+  teachersCache = null;
+}
+
+export function markSessionVerifiedFromSheet() {
+  lastSessionVerifiedAt = Date.now();
+}
+
+/** Skip bootstrap session re-verify when login/verify just succeeded. */
+export function shouldSkipSessionRefresh() {
+  return lastSessionVerifiedAt > 0 && Date.now() - lastSessionVerifiedAt < SESSION_VERIFY_SKIP_MS;
+}
+
 /**
  * @param {ReturnType<typeof normalizeTeacherRow>[]} teachers
  * @param {string} input
@@ -169,11 +194,24 @@ export async function checkTeacherRequiresPin(teacherNameInput) {
 }
 
 export async function fetchTeachers() {
-  console.log('[teachers] fetchTeachers() — loading from GAS...');
-  const rawList = await fetchTeachersGas();
-  const list = rawList.map(normalizeTeacherRow).filter((t) => t.teacher_name);
-  console.log('[teachers] loaded', list.length, 'teacher(s):', list.map((t) => t.teacher_name));
-  return list;
+  if (teachersCache && Date.now() - teachersCache.cachedAt < TEACHERS_CACHE_TTL_MS) {
+    return teachersCache.list;
+  }
+
+  if (teachersInflight) return teachersInflight;
+
+  teachersInflight = (async () => {
+    console.log('[teachers] fetchTeachers() — loading from GAS...');
+    const rawList = await fetchTeachersGas();
+    const list = rawList.map(normalizeTeacherRow).filter((t) => t.teacher_name);
+    console.log('[teachers] loaded', list.length, 'teacher(s):', list.map((t) => t.teacher_name));
+    teachersCache = { list, cachedAt: Date.now() };
+    return list;
+  })().finally(() => {
+    teachersInflight = null;
+  });
+
+  return teachersInflight;
 }
 
 /**
@@ -253,6 +291,7 @@ export async function resolveTeacherLogin(loginInput, pinInput = '') {
     const session = sessionFromTeacherRow(verified);
     console.log('[teachers] admin login OK:', session.teacherName);
     saveTeacherAuthSession(session);
+    markSessionVerifiedFromSheet();
     return session;
   }
 
@@ -277,12 +316,14 @@ export async function resolveTeacherLogin(loginInput, pinInput = '') {
     const session = sessionFromTeacherRow(verified);
     console.log('[teachers] pastoral login OK:', session.teacherName);
     saveTeacherAuthSession(session);
+    markSessionVerifiedFromSheet();
     return session;
   }
 
   const session = sessionFromTeacherRow(match);
   console.log('[teachers] teacher login OK (name):', session.teacherName);
   saveTeacherAuthSession(session);
+  markSessionVerifiedFromSheet();
   return session;
 }
 
@@ -403,6 +444,7 @@ export async function adminCreateTeacher(session, payload) {
     assigned_classes: assigned,
     role: String(payload?.role ?? 'teacher').trim()
   });
+  invalidateTeachersCache();
   return {
     teacher: normalizeTeacherRow(out?.teacher ?? {})
   };
@@ -422,6 +464,7 @@ export async function adminUpdateTeacher(session, payload) {
     role: String(payload?.role ?? '').trim(),
     active: payload?.active
   });
+  invalidateTeachersCache();
   return normalizeTeacherRow(out?.teacher ?? {});
 }
 
@@ -430,9 +473,11 @@ export async function adminUpdateTeacher(session, payload) {
  * @param {{ adminPin: string, username: string }} payload
  */
 export async function adminDeactivateTeacher(session, payload) {
-  return adminGasWrite(session, payload.adminPin, 'deactivate', {
+  const out = await adminGasWrite(session, payload.adminPin, 'deactivate', {
     username: String(payload?.username ?? '').trim().toLowerCase()
   });
+  invalidateTeachersCache();
+  return out;
 }
 
 /**
@@ -467,5 +512,6 @@ export async function refreshTeacherSessionFromSheet(teacherName) {
     isAdmin: row.isAdmin
   };
   saveTeacherAuthSession(session);
+  markSessionVerifiedFromSheet();
   return session;
 }

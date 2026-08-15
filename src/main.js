@@ -12,6 +12,7 @@ import { initAppSettings, isAttendanceRequiredDate, isConfiguredSchoolHoliday } 
 import { syncClassPointTransactions, enrichStudentsForPointSync } from './services/studentPointsService.js';
 import { renderBottomNav } from './components/navbar.js';
 import { openConfirmModal } from './components/confirmModal.js';
+import { dismissSaveResultBadge } from './components/saveResultBadge.js';
 import { loadAppState, saveAppState, getTodayDateKey, getDefaultAppState, STORAGE_KEY } from './data/appState.js';
 import { getRouteAccessDenied } from './config/routeGuards.js';
 import { isExecutiveEnabled } from './config/featureFlags.js';
@@ -42,7 +43,7 @@ import {
   canViewPointsReportSession,
   saveTeacherAuthSession
 } from './services/teacherAuth.js';
-import { resolveTeacherLogin, refreshTeacherSessionFromSheet, changeTeacherPin } from './services/teachersService.js';
+import { resolveTeacherLogin, refreshTeacherSessionFromSheet, changeTeacherPin, shouldSkipSessionRefresh } from './services/teachersService.js';
 import { normalizeAttendanceStatus, CHECK_DEFAULT_STATUS } from './data/attendanceStatuses.js';
 import { disciplineEntryToFirestore } from './data/disciplineChecks.js';
 import {
@@ -135,6 +136,11 @@ function ensureTeacherAuth() {
 }
 
 function runPageCleanup() {
+  try {
+    dismissSaveResultBadge();
+  } catch {
+    // ignore
+  }
   if (!pageCleanup) return;
   try {
     pageCleanup();
@@ -221,20 +227,24 @@ async function runDeferredBootstrap() {
   }
 
   if (isLoggedIn() && isGasConfigured()) {
-    try {
-      const verified = await refreshTeacherSessionFromSheet(state.teacherName);
-      if (!verified) {
-        console.warn('[auth] session invalid — removed from TEACHERS sheet');
-        performLogout();
-        window.location.hash = '/login';
-        return;
+    if (shouldSkipSessionRefresh()) {
+      console.log('[auth] session verify skipped — verified recently');
+    } else {
+      try {
+        const verified = await refreshTeacherSessionFromSheet(state.teacherName);
+        if (!verified) {
+          console.warn('[auth] session invalid — removed from TEACHERS sheet');
+          performLogout();
+          window.location.hash = '/login';
+          return;
+        }
+        syncTeacherFromStorage();
+        applyTodayToState();
+        saveAppState(state);
+        renderApp();
+      } catch (err) {
+        console.warn('[auth] session verify skipped:', err?.message || err);
       }
-      syncTeacherFromStorage();
-      applyTodayToState();
-      saveAppState(state);
-      renderApp();
-    } catch (err) {
-      console.warn('[auth] session verify skipped:', err?.message || err);
     }
   }
 }

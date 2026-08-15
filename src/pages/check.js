@@ -273,15 +273,20 @@ export function renderCheckPage(container, ctx = {}) {
     updatePickerState();
   }
 
+  function cloneDisciplineEntry(entry = emptyDisciplineEntry()) {
+    return {
+      flags: [...(entry?.flags || [])],
+      behaviors: (entry?.behaviors || []).map((b) => ({ ...b })),
+      note: String(entry?.note || ''),
+      disciplineWaived: Boolean(entry?.disciplineWaived)
+    };
+  }
+
   function cloneDisciplineMap(source = {}) {
     /** @type {typeof discipline} */
     const out = {};
     for (const [sid, entry] of Object.entries(source)) {
-      out[sid] = {
-        flags: [...(entry?.flags || [])],
-        behaviors: (entry?.behaviors || []).map((b) => ({ ...b })),
-        note: String(entry?.note || '')
-      };
+      out[sid] = cloneDisciplineEntry(entry);
     }
     return out;
   }
@@ -510,6 +515,7 @@ export function renderCheckPage(container, ctx = {}) {
         entry.disciplineWaived = false;
       }
       discipline[studentId] = entry;
+      baselineDiscipline[studentId] = cloneDisciplineEntry(entry);
       updateStudentCardUI(scrollEl, studentId, key, entry, dateKey);
       refreshSummary();
     });
@@ -531,9 +537,18 @@ export function renderCheckPage(container, ctx = {}) {
 
     body.querySelector('#markAllPresent')?.addEventListener('click', () => {
       students.forEach((s) => {
-        attendance[s.student_id] = 'present';
-        const disc = discipline[s.student_id] || emptyDisciplineEntry();
-        updateStudentCardUI(scrollEl, s.student_id, 'present', disc, dateKey);
+        const sid = String(s.student_id);
+        attendance[sid] = 'present';
+        if (!discipline[sid]) discipline[sid] = emptyDisciplineEntry();
+        const entry = {
+          ...discipline[sid],
+          behaviors: [...(discipline[sid].behaviors || [])],
+          flags: [],
+          disciplineWaived: false
+        };
+        discipline[sid] = entry;
+        baselineDiscipline[sid] = cloneDisciplineEntry(entry);
+        updateStudentCardUI(scrollEl, sid, 'present', entry, dateKey);
       });
       refreshSummary();
     });
@@ -780,6 +795,7 @@ export function renderCheckPage(container, ctx = {}) {
         navigateAfterSave: true
       });
       if (ok) {
+        baselineDiscipline = cloneDisciplineMap(discipline);
         showSaveResultBadge({
           classKey,
           dateLabel: formatDateWithDayThai(dateKey),

@@ -6,6 +6,7 @@ import {
   getDashboardDataForSession,
   summarizeAttendance
 } from '../services/attendanceService.js';
+import { peekSchoolOverviewCache } from '../services/executive/schoolOverviewCache.js';
 import {
   loadSemesterScoreReportsForSession,
   requiresCommunityService,
@@ -74,10 +75,23 @@ function renderHolidayReminderCard(reminder) {
   </article>`;
 }
 
-function canViewDashboardScores(session) {
-  if (!session) return false;
-  if (isSchoolWideViewSession(session)) return true;
+/** Homeroom teachers only — admin/pastoral scores load via Points Report, not on Dashboard mount. */
+function shouldAutoLoadDashboardScores(session) {
+  if (!session || isSchoolWideViewSession(session)) return false;
   return getHomeroomClassKeys(session).length > 0;
+}
+
+async function loadDashboardStatsForSession(session, attendanceDate) {
+  const date = String(attendanceDate || getTodayDate());
+  if (isSchoolWideViewSession(session)) {
+    const cached = peekSchoolOverviewCache(date);
+    if (cached?.allRows) {
+      const rows = cached.allRows;
+      return { date, summary: summarizeAttendance(rows), rows, fromSchoolOverviewCache: true };
+    }
+  }
+  const data = await getDashboardDataForSession(session, date);
+  return { ...data, fromSchoolOverviewCache: false };
 }
 
 const DASH_SCORES_LIST_CAP = 80;
@@ -226,7 +240,7 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
   const showBehaviorQuick = canManageBehaviorSession(session) && !admin;
   const showPointsReportQuick = canViewPointsReportSession(session);
   const showDisciplineReportQuick = canViewDisciplineReportSession(session);
-  const showScoresSection = canViewDashboardScores(session);
+  const showScoresSection = shouldAutoLoadDashboardScores(session);
   const canBehavior = canManageBehaviorSession(session);
   const displayTeacher = teacherName || t('dashboard.teacherFallback');
 
@@ -429,12 +443,20 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
       paintAlerts([]);
       return;
     }
+    if (isSchoolWideViewSession(session)) {
+      const warm = peekSchoolOverviewCache(today);
+      if (warm?.allRows) {
+        paintStats(summarizeAttendance(warm.allRows));
+      }
+    }
     try {
-      const data = await getDashboardDataForSession(session, today);
+      const data = await loadDashboardStatsForSession(session, today);
       paintStats(data.summary);
-      requestAnimationFrame(() => {
-        void loadScores();
-      });
+      if (showScoresSection) {
+        requestAnimationFrame(() => {
+          void loadScores();
+        });
+      }
       await loadAlerts();
     } catch (err) {
       console.error('[dashboard] load failed', err);
