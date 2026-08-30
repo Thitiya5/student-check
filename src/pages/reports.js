@@ -13,11 +13,8 @@ import {
   resolveReportPdfExport
 } from '../services/teacherAuth.js';
 import { fetchLevelOptions, fetchRoomOptions } from '../services/studentsService.js';
-import {
-  getTodayDate,
-  formatDateInBangkok,
-  weekRangeContaining
-} from '../utils/dateIso.js';
+import { getTodayDate, formatDateInBangkok, weekRangeContaining } from '../utils/dateIso.js';
+import { getSemesterDateRange } from '../utils/studentAttendanceSummary.js';
 import { t } from '../i18n/index.js';
 import { renderPageHeader, bindPageHeaderActions } from '../components/pageHeader.js';
 import {
@@ -28,16 +25,8 @@ import {
 } from './reportsRender.js';
 
 function semesterRange(refDate) {
-  const d = refDate || getTodayDate();
-  const y = Number(d.slice(0, 4));
-  const m = Number(d.slice(5, 7));
-  if (m >= 5 && m <= 10) {
-    return { from: `${y}-05-01`, to: `${y}-10-31` };
-  }
-  if (m >= 11) {
-    return { from: `${y}-11-01`, to: `${y + 1}-04-30` };
-  }
-  return { from: `${y - 1}-11-01`, to: `${y}-04-30` };
+  const range = getSemesterDateRange(refDate || getTodayDate());
+  return { from: range.from, to: range.to };
 }
 
 function lastDayOfMonth(yearMonth) {

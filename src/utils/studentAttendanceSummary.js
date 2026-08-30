@@ -2,23 +2,42 @@ import { ATTENDANCE_STATUS_KEYS, normalizeAttendanceStatus } from '../data/atten
 import { getDisciplineChecks, parseDisciplineFromRecord } from '../data/disciplineChecks.js';
 import { computeParentMeetingRisk } from './pointCalculations.js';
 import { getTodayDate } from './dateIso.js';
+import { getAppSettings } from '../services/appSettingsService.js';
 
 /** @typedef {'ok'|'watch'|'alert'} RiskLevel */
 
 /**
- * Current Thai school semester date range (May–Oct / Nov–Apr).
- * @param {string} [refDate] yyyy-MM-dd
+ * Hardcoded Thai school semester fallback (May–Oct / Nov–Apr).
+ * @param {string} refDate yyyy-MM-dd
  */
-export function getSemesterDateRange(refDate = getTodayDate()) {
+function getHardcodedSemesterDateRange(refDate) {
   const y = Number(refDate.slice(0, 4));
   const m = Number(refDate.slice(5, 7));
   if (m >= 5 && m <= 10) {
-    return { from: `${y}-05-01`, to: `${y}-10-31`, labelKey: 'students.rangeSemester1' };
+    return { from: `${y}-05-01`, to: `${y}-10-31`, labelKey: 'students.rangeSemester1', term: 1 };
   }
   if (m >= 11) {
-    return { from: `${y}-11-01`, to: `${y + 1}-04-30`, labelKey: 'students.rangeSemester2' };
+    return { from: `${y}-11-01`, to: `${y + 1}-04-30`, labelKey: 'students.rangeSemester2', term: 2 };
   }
-  return { from: `${y - 1}-11-01`, to: `${y}-04-30`, labelKey: 'students.rangeSemester2' };
+  return { from: `${y - 1}-11-01`, to: `${y}-04-30`, labelKey: 'students.rangeSemester2', term: 2 };
+}
+
+/**
+ * Active semester date range from app settings (preferred) or hardcoded fallback.
+ * @param {string} [refDate] yyyy-MM-dd
+ */
+export function getSemesterDateRange(refDate = getTodayDate()) {
+  const date = String(refDate || getTodayDate()).slice(0, 10);
+  const ay = getAppSettings()?.academicYear;
+  if (ay?.semester1Start && ay?.semester1End && ay?.semester2Start && ay?.semester2End) {
+    if (date >= ay.semester1Start && date <= ay.semester1End) {
+      return { from: ay.semester1Start, to: ay.semester1End, labelKey: 'students.rangeSemester1', term: 1 };
+    }
+    if (date >= ay.semester2Start && date <= ay.semester2End) {
+      return { from: ay.semester2Start, to: ay.semester2End, labelKey: 'students.rangeSemester2', term: 2 };
+    }
+  }
+  return getHardcodedSemesterDateRange(date);
 }
 
 /**

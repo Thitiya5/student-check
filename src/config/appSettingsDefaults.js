@@ -38,6 +38,13 @@ export const DEFAULT_APP_SETTINGS = {
     /** คะแนนต่ำกว่านี้ต้องบำเพ็ญประโยชน์ */
     communityServiceThreshold: 60
   },
+  /** ช่วงภาคเรียนสำหรับคำนวณคะแนนสะสม (yyyy-MM-dd) */
+  academicYear: {
+    semester1Start: '2026-05-01',
+    semester1End: '2026-10-31',
+    semester2Start: '2026-11-01',
+    semester2End: '2027-04-30'
+  },
   /** @type {Array<{ id: string, name: string, startDate: string, endDate: string }>} */
   schoolHolidays: []
 };

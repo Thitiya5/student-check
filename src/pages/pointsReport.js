@@ -23,6 +23,12 @@ import {
   reasonLabel
 } from '../services/studentPointsService.js';
 import { returnDisciplinePointsForStudent, restoreDisciplinePointsForStudent } from '../services/disciplineReturnService.js';
+import {
+  loadScoreReportsForDateRange,
+  filterScoreReports,
+  requiresCommunityService,
+  getCommunityServiceThresholdScore
+} from '../services/studentScoreService.js';
 import { reconcileStaleSystemPoints } from '../services/historyPointSync.js';
 import { queryAttendanceInRangeForSession } from '../services/attendanceService.js';
 import { openPinConfirmModal } from '../components/pinConfirmModal.js';
@@ -73,24 +79,34 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
   const viewKeys = getViewClassKeys(session);
   const today = getTodayDate();
   const semester = getSemesterDateRange(today);
+  const csThreshold = getCommunityServiceThresholdScore();
   const initialQuery = getHashQuery();
   const initialTab = initialQuery.get('tab') || '';
-  const defaultFrom =
-    initialTab === 'behavior' ? today : viewOnly ? semester.from : today;
-  const defaultTo =
-    initialTab === 'behavior' ? today : viewOnly ? semester.to : today;
+  const defaultFrom = initialTab === 'behavior' ? today : semester.from;
+  const defaultTo = initialTab === 'behavior' ? today : semester.to;
   const initialFrom = initialQuery.get('from') || defaultFrom;
   const initialTo = initialQuery.get('to') || initialQuery.get('from') || defaultTo;
   const initialLevel = initialQuery.get('level') || '';
   const initialRoom = initialQuery.get('room') || '';
+  const initialCommunityOnly = initialQuery.get('community') === '1';
 
   let mode =
     initialTab === 'behavior'
       ? 'behavior'
-      : viewOnly
-        ? 'ledger'
-        : 'classes';
+      : initialTab === 'scores'
+        ? 'scores'
+        : initialTab === 'ledger'
+          ? 'ledger'
+          : initialTab === 'classes'
+            ? 'classes'
+            : admin || schoolWide
+              ? 'scores'
+              : 'classes';
   let rows = [];
+  /** @type {import('../services/studentScoreService.js').ReturnType<import('../services/studentScoreService.js').buildStudentScoreReport>[]} */
+  let scoreReports = [];
+  /** @type {{ from: string, to: string, labelKey?: string }|null} */
+  let scoreRange = null;
   /** @type {Map<string, { disciplineWaived: boolean, disciplineReturnedBy: string, disciplineReturnedAt: string|null }>} */
   let attendanceMeta = new Map();
   let refreshSeq = 0;
@@ -118,6 +134,7 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
     topAction: 'back'
   })}
   <section class="segmented report-tabs points-report-tabs">
+    <button type="button" class="${mode === 'scores' ? 'is-active' : ''}" data-mode="scores">${escapeHtml(t('pointsReport.tabScores'))}</button>
     <button type="button" class="${mode === 'classes' ? 'is-active' : ''}" data-mode="classes">${escapeHtml(t('pointsReport.tabClasses'))}</button>
     <button type="button" class="${mode === 'ledger' ? 'is-active' : ''}" data-mode="ledger">${escapeHtml(t('pointsReport.tabLedger'))}</button>
     <button type="button" class="${mode === 'behavior' ? 'is-active' : ''}" data-mode="behavior">${escapeHtml(t('pointsReport.tabBehavior'))}</button>
@@ -134,6 +151,7 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
           <span class="reports-filter__label">${escapeHtml(t('common.toDate'))}</span>
           <input type="date" id="ptsTo" class="reports-filter__control input-field" value="${escapeHtml(initialTo)}" />
         </label>
+        <button type="button" class="reports-today-chip" id="ptsSemesterBtn">${escapeHtml(t('pointsReport.semesterRange'))}</button>
         <button type="button" class="reports-today-chip" id="ptsTodayBtn">${escapeHtml(t('common.today'))}</button>
       </div>
     </div>
@@ -180,6 +198,14 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
         <input type="checkbox" id="ptsDeductOnly" />
         <span>${escapeHtml(t('pointsReport.deductionsOnly'))}</span>
       </label>
+      ${
+        admin
+          ? `<label class="points-report-toolbar__deduct" id="ptsCommunityWrap">
+        <input type="checkbox" id="ptsCommunityOnly" ${initialCommunityOnly ? 'checked' : ''} />
+        <span>${escapeHtml(t('pointsReport.communityServiceOnly', { threshold: csThreshold }))}</span>
+      </label>`
+          : ''
+      }
     </div>
   </section>
   <section id="pointsReportContent">${renderLoading()}</section>`;
@@ -199,8 +225,10 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
   const teacherSel = container.querySelector('#ptsTeacher');
   const searchInput = container.querySelector('#ptsSearch');
   const deductOnly = container.querySelector('#ptsDeductOnly');
+  const communityOnly = container.querySelector('#ptsCommunityOnly');
   const categoryWrap = container.querySelector('#ptsCategoryWrap');
   const deductWrap = container.querySelector('#ptsDeductWrap');
+  const communityWrap = container.querySelector('#ptsCommunityWrap');
   const classBlock = container.querySelector('#ptsClassBlock');
   const searchWrap = container.querySelector('#ptsSearchWrap');
   const filterMoreBlock = container.querySelector('.points-report-toolbar__more')?.closest('.reports-toolbar__block');
@@ -216,8 +244,10 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
 
   function syncToolbarForMode() {
     const isBehavior = mode === 'behavior';
-    if (categoryWrap) categoryWrap.hidden = isBehavior;
-    if (deductWrap) deductWrap.hidden = isBehavior;
+    const isScores = mode === 'scores';
+    if (categoryWrap) categoryWrap.hidden = isBehavior || isScores;
+    if (deductWrap) deductWrap.hidden = isBehavior || isScores;
+    if (communityWrap) communityWrap.hidden = isBehavior || !isScores;
     if (classBlock) classBlock.hidden = isBehavior;
     if (searchWrap) searchWrap.hidden = isBehavior;
     if (filterMoreBlock) {
@@ -227,9 +257,147 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
   }
 
   function paintContent() {
-    if (mode === 'classes') renderClassSummary(summarizeByClass(rows));
+    if (mode === 'scores') renderScoresSummary(scoreReports, scoreRange);
+    else if (mode === 'classes') renderClassSummary(summarizeByClass(rows));
     else if (mode === 'behavior') renderBehaviorList(rows);
     else renderLedger(rows);
+  }
+
+  function getFilteredScoreReports(reports) {
+    return filterScoreReports(reports, {
+      level: levelSel?.value || '',
+      room: roomSel?.value || '',
+      search: searchInput?.value?.trim() || '',
+      communityServiceOnly: communityOnly?.checked
+    });
+  }
+
+  function getScoreClassLabel() {
+    const level = levelSel?.value || '';
+    const room = roomSel?.value || '';
+    if (level && room) return `${level}/${room}`;
+    if (level) return level;
+    return t('common.all');
+  }
+
+  function getScoreRangeLabel(range) {
+    if (range?.from && range?.to) return `${range.from} – ${range.to}`;
+    return `${fromInput?.value || ''} – ${toInput?.value || ''}`;
+  }
+
+  async function exportScoresPdf(reports, range) {
+    const filtered = getFilteredScoreReports(reports);
+    if (!filtered.length) {
+      onToast?.(t('pointsReport.scoresEmpty'));
+      return;
+    }
+    try {
+      onToast?.(t('pdf.exporting'));
+      const { exportScoreReportPdf } = await import('../services/scoreReportPdfService.js');
+      await exportScoreReportPdf({
+        reports: filtered,
+        range: {
+          from: range?.from || fromInput?.value || today,
+          to: range?.to || toInput?.value || today
+        },
+        classLabel: getScoreClassLabel(),
+        communityServiceOnly: Boolean(communityOnly?.checked),
+        session
+      });
+      onToast?.(t('pdf.exportDone'));
+    } catch (err) {
+      onToast?.(err instanceof Error ? err.message : t('pdf.exportFailed'));
+    }
+  }
+
+  /**
+   * @param {import('../services/studentScoreService.js').ReturnType<import('../services/studentScoreService.js').buildStudentScoreReport>[]} reports
+   * @param {{ from: string, to: string }|null} range
+   */
+  function renderScoresSummary(reports, range) {
+    const csThreshold = getCommunityServiceThresholdScore();
+    const filtered = getFilteredScoreReports(reports);
+
+    if (!filtered.length) {
+      content.innerHTML = renderEmpty(
+        communityOnly?.checked
+          ? t('pointsReport.communityServiceEmpty', { threshold: csThreshold })
+          : t('pointsReport.scoresEmpty')
+      );
+      return;
+    }
+
+    const rangeLabel = getScoreRangeLabel(range);
+    const csCount = filtered.filter((r) => requiresCommunityService(r.totalScore, csThreshold)).length;
+    const canExportScores = canViewPointsReportSession(session) && filtered.length > 0;
+
+    const tableRows = filtered
+      .map((r) => {
+        const isCs = requiresCommunityService(r.totalScore, csThreshold);
+        const rowCls = isCs ? 'points-score-table__row points-score-table__row--cs' : 'points-score-table__row';
+        const status = isCs
+          ? `<span class="points-score-table__cs-badge">${escapeHtml(t('dashboard.communityServiceBadge'))}</span>`
+          : `<span class="points-score-table__ok">${escapeHtml(t('pointsReport.scoreOk'))}</span>`;
+        const profileQs = new URLSearchParams({ id: r.studentId, class: r.classKey || '' });
+        return `<tr class="${rowCls}">
+          <td class="points-score-table__name"><button type="button" class="points-score-table__profile-link" data-href="/student-profile?${escapeHtml(profileQs.toString())}">${escapeHtml(r.studentName)}</button></td>
+          <td>${escapeHtml(r.studentId)}</td>
+          <td>${escapeHtml(r.classKey || '—')}</td>
+          <td class="points-score-table__score"><strong>${escapeHtml(String(r.totalScore))}</strong></td>
+          <td class="points-score-table__ded">-${escapeHtml(String(r.attendanceDeductions ?? 0))}</td>
+          <td class="points-score-table__ded">-${escapeHtml(String(r.disciplineDeductions ?? 0))}</td>
+          <td class="points-score-table__pos">+${escapeHtml(String(r.behaviorPositive ?? 0))}</td>
+          <td class="points-score-table__ded">-${escapeHtml(String(r.behaviorNegative ?? 0))}</td>
+          <td>${status}</td>
+        </tr>`;
+      })
+      .join('');
+
+    content.innerHTML = `
+      <p class="points-ledger-summary">${escapeHtml(
+        t('pointsReport.scoresSummary', {
+          count: filtered.length,
+          range: rangeLabel,
+          community: csCount,
+          threshold: csThreshold
+        })
+      )}</p>
+      <div class="points-score-table-wrap glass-card">
+        <table class="points-score-table">
+          <thead>
+            <tr>
+              <th>${escapeHtml(t('pointsReport.student'))}</th>
+              <th>${escapeHtml(t('pointsReport.studentId'))}</th>
+              <th>${escapeHtml(t('common.room'))}</th>
+              <th>${escapeHtml(t('pointsReport.semesterScore'))}</th>
+              <th>${escapeHtml(t('pointsReport.colAttendance'))}</th>
+              <th>${escapeHtml(t('pointsReport.colDiscipline'))}</th>
+              <th>${escapeHtml(t('pointsReport.colBehaviorGood'))}</th>
+              <th>${escapeHtml(t('pointsReport.colBehaviorBad'))}</th>
+              <th>${escapeHtml(t('pointsReport.scoreStatus'))}</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+      ${
+        canExportScores
+          ? `<section class="reports-export-card reports-export-card--bottom reports-export-card--compact glass-card">
+        <button type="button" class="button-primary reports-export-card__button" id="ptsExportPdf">${escapeHtml(t('pointsReport.exportPdf'))}</button>
+      </section>`
+          : ''
+      }`;
+
+    content.querySelector('#ptsExportPdf')?.addEventListener('click', () => {
+      void exportScoresPdf(reports, range);
+    });
+
+    content.querySelectorAll('[data-href]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const href = btn.getAttribute('data-href');
+        if (href) onNavigate?.(href);
+      });
+    });
   }
 
   function renderClassSummary(list) {
@@ -749,6 +917,21 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
         level: levelSel?.value || '',
         room: roomSel?.value || ''
       };
+
+      if (mode === 'scores') {
+        const payload = await loadScoreReportsForDateRange(session, {
+          from: rangeOpts.from,
+          to: rangeOpts.to
+        });
+        if (seq !== refreshSeq) return;
+        scoreReports = payload.reports || [];
+        scoreRange = payload.range || { from: rangeOpts.from, to: rangeOpts.to };
+        rows = [];
+        attendanceMeta = new Map();
+        paintContent();
+        return;
+      }
+
       const attendancePromise =
         mode === 'ledger'
           ? queryAttendanceInRangeForSession(session, rangeOpts).catch(() => [])
@@ -806,11 +989,18 @@ export function renderPointsReportPage(container, { state = {}, onToast, onLogou
     await loadRooms(levelSel.value);
     void refresh();
   });
-  [toInput, roomSel, categorySel, teacherSel, deductOnly].forEach((el) => {
+  [toInput, roomSel, categorySel, teacherSel, deductOnly, communityOnly].forEach((el) => {
     el?.addEventListener('change', () => void refresh());
   });
   fromInput?.addEventListener('change', () => void refresh());
   searchInput?.addEventListener('input', () => void refresh());
+
+  container.querySelector('#ptsSemesterBtn')?.addEventListener('click', () => {
+    const sem = getSemesterDateRange(today);
+    if (fromInput) fromInput.value = sem.from;
+    if (toInput) toInput.value = sem.to;
+    void refresh();
+  });
 
   container.querySelector('#ptsTodayBtn')?.addEventListener('click', () => {
     if (fromInput) fromInput.value = today;

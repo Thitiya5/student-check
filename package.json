@@ -9,6 +9,7 @@
     "build": "vite build",
     "test:holidays": "node scripts/verify-school-holidays.mjs",
     "test:discipline": "node scripts/verify-discipline-display.mjs",
+    "test:scores": "node scripts/verify-semester-scores.mjs",
     "preview": "vite preview",
     "docs:screenshots": "node scripts/capture-manual-screenshots.mjs",
     "docs:embed": "node scripts/embed-manual-images.mjs",

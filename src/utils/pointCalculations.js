@@ -48,6 +48,42 @@ export function computeScoreFromTransactions(transactions, opts = {}) {
 }
 
 /**
+ * Category breakdown for semester score reports (attendance / discipline / behavior).
+ * @param {Array<{ points?: number, category?: string, type?: string }>} transactions
+ */
+export function computeScoreBreakdownFromTransactions(transactions) {
+  let attendanceDeductions = 0;
+  let disciplineDeductions = 0;
+  let disciplineRestored = 0;
+  let behaviorPositive = 0;
+  let behaviorNegative = 0;
+
+  for (const row of transactions) {
+    const cat = row.category || row.type || '';
+    const p = Number(row.points) || 0;
+    if (cat === 'attendance') {
+      if (p < 0) attendanceDeductions += Math.abs(p);
+    } else if (cat === 'discipline') {
+      if (p < 0) disciplineDeductions += Math.abs(p);
+      else if (p > 0) disciplineRestored += p;
+    } else if (cat === 'behavior' || cat === 'manual') {
+      if (p > 0) behaviorPositive += p;
+      else if (p < 0) behaviorNegative += Math.abs(p);
+    }
+  }
+
+  const score = computeScoreFromTransactions(transactions);
+  return {
+    ...score,
+    attendanceDeductions,
+    disciplineDeductions,
+    disciplineRestored,
+    behaviorPositive,
+    behaviorNegative
+  };
+}
+
+/**
  * @param {Array<{ status: string, attendanceDate?: string }>} records
  */
 export function computeAttendancePercentages(records) {

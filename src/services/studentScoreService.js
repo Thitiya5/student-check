@@ -1,5 +1,6 @@
 import {
   computeScoreFromTransactions,
+  computeScoreBreakdownFromTransactions,
   computeAttendancePercentages,
   computeParentMeetingRisk
 } from '../utils/pointCalculations.js';
@@ -70,7 +71,7 @@ export function buildStudentScoreReport({
   transactions = []
 }) {
   const days = dedupeRecordsByDate(attendanceRows);
-  const score = computeScoreFromTransactions(transactions);
+  const breakdown = computeScoreBreakdownFromTransactions(transactions);
   const attendance = computeAttendancePercentages(days);
   const parentRisk = computeParentMeetingRisk(days);
 
@@ -79,10 +80,10 @@ export function buildStudentScoreReport({
     studentName,
     classKey,
     startingScore: getStartingScore(),
-    ...score,
+    ...breakdown,
     attendance,
     parentRisk,
-    behaviorPercent: score.remainingPercent,
+    behaviorPercent: breakdown.remainingPercent,
     attendanceDays: attendance.total
   };
 }
@@ -94,6 +95,22 @@ export function sortReportsByScore(reports, ascending = false) {
   return [...reports].sort((a, b) =>
     ascending ? a.totalScore - b.totalScore : b.totalScore - a.totalScore
   );
+}
+
+/** Sort by class/room (numeric), then score ascending, then student name. */
+export function sortScoreReportsByClassThenScore(reports) {
+  return [...reports].sort((a, b) => {
+    const byClass = String(a.classKey || '').localeCompare(String(b.classKey || ''), undefined, {
+      numeric: true
+    });
+    if (byClass) return byClass;
+    const byScore = (Number(a.totalScore) || 0) - (Number(b.totalScore) || 0);
+    if (byScore) return byScore;
+    return String(a.studentName || a.studentId || '').localeCompare(
+      String(b.studentName || b.studentId || ''),
+      'th'
+    );
+  });
 }
 
 /**
@@ -382,18 +399,18 @@ async function loadSemesterPointTransactions(session, range, attRows) {
  * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
  * @param {string} [refDate] yyyy-MM-dd
  */
-async function fetchSemesterScoreReportsForSession(session, refDate = getTodayDate()) {
+async function fetchSemesterScoreReportsForSession(session, refDate = getTodayDate(), rangeOverride = null) {
   if (!session) {
     return {
       reports: [],
       transactions: [],
-      range: getSemesterDateRange(refDate),
+      range: rangeOverride || getSemesterDateRange(refDate),
       byClass: [],
       byClassDeducted: []
     };
   }
 
-  const range = getSemesterDateRange(refDate);
+  const range = rangeOverride || getSemesterDateRange(refDate);
   let attRows = [];
   try {
     attRows = await querySemesterAttendanceForSession(session, range);
@@ -438,4 +455,46 @@ export async function loadSemesterScoreReportsForSession(session, refDate = getT
 
   semesterScoreInflight.set(key, promise);
   return promise;
+}
+
+/**
+ * Score reports for an explicit date range (Points Report on-demand load).
+ * @param {import('./teacherAuth.js').TeacherAuthSession|null} session
+ * @param {{ from: string, to: string }} range
+ */
+export async function loadScoreReportsForDateRange(session, range) {
+  if (!session || !range?.from || !range?.to) {
+    return fetchSemesterScoreReportsForSession(session, getTodayDate(), range);
+  }
+  return fetchSemesterScoreReportsForSession(session, range.to, range);
+}
+
+/**
+ * Filter score reports by class key and optional community-service threshold.
+ * @param {ReturnType<typeof buildStudentScoreReport>[]} reports
+ * @param {{ classKey?: string, level?: string, room?: string, communityServiceOnly?: boolean, search?: string }} [filters]
+ */
+export function filterScoreReports(reports, filters = {}) {
+  let list = [...reports];
+  const classKey =
+    filters.classKey ||
+    (filters.level && filters.room ? `${filters.level}/${filters.room}` : '');
+  if (classKey) {
+    list = list.filter((r) => r.classKey === classKey);
+  } else if (filters.level) {
+    const prefix = `${filters.level}/`;
+    list = list.filter((r) => String(r.classKey || '').startsWith(prefix));
+  }
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    list = list.filter(
+      (r) =>
+        String(r.studentName || '').toLowerCase().includes(q) ||
+        String(r.studentId || '').toLowerCase().includes(q)
+    );
+  }
+  if (filters.communityServiceOnly) {
+    list = filterCommunityServiceReports(list);
+  }
+  return sortScoreReportsByClassThenScore(list);
 }

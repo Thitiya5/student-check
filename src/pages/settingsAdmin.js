@@ -161,6 +161,27 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
       </section>
 
       <section class="settings-admin-card glass-card">
+        <h2 class="settings-admin-card__title">${escapeHtml(t('settingsAdmin.academicYearTitle'))}</h2>
+        <p class="settings-admin-card__desc">${escapeHtml(t('settingsAdmin.academicYearDesc'))}</p>
+        <label class="settings-admin-row field">
+          <span class="settings-admin-row__label">${escapeHtml(t('settingsAdmin.semester1Start'))}</span>
+          <input type="date" class="input-field" id="sem1Start" value="${escapeHtml(draft.academicYear.semester1Start)}" />
+        </label>
+        <label class="settings-admin-row field">
+          <span class="settings-admin-row__label">${escapeHtml(t('settingsAdmin.semester1End'))}</span>
+          <input type="date" class="input-field" id="sem1End" value="${escapeHtml(draft.academicYear.semester1End)}" />
+        </label>
+        <label class="settings-admin-row field">
+          <span class="settings-admin-row__label">${escapeHtml(t('settingsAdmin.semester2Start'))}</span>
+          <input type="date" class="input-field" id="sem2Start" value="${escapeHtml(draft.academicYear.semester2Start)}" />
+        </label>
+        <label class="settings-admin-row field">
+          <span class="settings-admin-row__label">${escapeHtml(t('settingsAdmin.semester2End'))}</span>
+          <input type="date" class="input-field" id="sem2End" value="${escapeHtml(draft.academicYear.semester2End)}" />
+        </label>
+      </section>
+
+      <section class="settings-admin-card glass-card">
         <h2 class="settings-admin-card__title">${escapeHtml(t('settingsAdmin.warningTitle'))}</h2>
         <p class="settings-admin-card__desc">${escapeHtml(t('settingsAdmin.warningDesc'))}</p>
         <label class="settings-admin-row field">
@@ -304,6 +325,12 @@ export function renderSettingsAdminPage(container, { state = {}, onNavigate, onT
       },
       scoring: {
         startingScore: Number(root.querySelector('#scoreStart')?.value)
+      },
+      academicYear: {
+        semester1Start: root.querySelector('#sem1Start')?.value || defaults.academicYear.semester1Start,
+        semester1End: root.querySelector('#sem1End')?.value || defaults.academicYear.semester1End,
+        semester2Start: root.querySelector('#sem2Start')?.value || defaults.academicYear.semester2Start,
+        semester2End: root.querySelector('#sem2End')?.value || defaults.academicYear.semester2End
       },
       schoolHolidays: draft?.schoolHolidays || []
     });

@@ -76,7 +76,7 @@ function renderHolidayReminderCard(reminder) {
 }
 
 /** Homeroom teachers only — admin/pastoral scores load via Points Report, not on Dashboard mount. */
-function shouldAutoLoadDashboardScores(session) {
+export function shouldAutoLoadDashboardScores(session) {
   if (!session || isSchoolWideViewSession(session)) return false;
   return getHomeroomClassKeys(session).length > 0;
 }
@@ -100,7 +100,7 @@ const DASH_SCORES_LIST_CAP = 80;
 
 function pointsReportHref(classKey, today) {
   const semester = getSemesterDateRange(today);
-  const qs = new URLSearchParams({ from: semester.from, to: semester.to });
+  const qs = new URLSearchParams({ tab: 'scores', from: semester.from, to: semester.to });
   const { level, room } = parseClassKey(classKey);
   if (level) qs.set('level', level);
   if (room) qs.set('room', room);
@@ -215,7 +215,7 @@ function renderScoresSectionHtml(byClassDeducted, today, opts, activeTab = null)
     service: byClassDeducted.reduce((n, b) => n + (b.communityServiceCount || 0), 0)
   };
   const semester = getSemesterDateRange(today);
-  const fullReportQs = new URLSearchParams({ from: semester.from, to: semester.to });
+  const fullReportQs = new URLSearchParams({ tab: 'scores', from: semester.from, to: semester.to });
 
   const panel = activeTab
     ? renderScoresPanelContent(activeTab, byClassDeducted, today, csThreshold)
@@ -246,7 +246,14 @@ export function renderDashboardPage(container, { state = {}, onNavigate, onLogou
 
   const quickActions = [
     { title: t('dashboard.quick.check'), target: '/check' },
-    ...(showPointsReportQuick ? [{ title: t('dashboard.quick.pointsReport'), target: '/points-report' }] : []),
+    ...(showPointsReportQuick
+      ? [
+          {
+            title: t('dashboard.quick.pointsReport'),
+            target: `/points-report?tab=scores&from=${getSemesterDateRange(today).from}&to=${getSemesterDateRange(today).to}`
+          }
+        ]
+      : []),
     { title: t('dashboard.quick.reports'), target: '/reports' },
     { title: t('dashboard.quick.history'), target: '/history' },
     { title: t('dashboard.quick.students'), target: '/students' },

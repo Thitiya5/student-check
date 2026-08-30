@@ -117,6 +117,15 @@ export function normalizeAppSettings(raw) {
     Math.max(0, Number(merged.scoring.communityServiceThreshold) ?? DEFAULT_APP_SETTINGS.scoring.communityServiceThreshold)
   );
 
+  const ay = merged.academicYear && typeof merged.academicYear === 'object' ? merged.academicYear : {};
+  const defAy = DEFAULT_APP_SETTINGS.academicYear;
+  merged.academicYear = {
+    semester1Start: isIsoDateKey(ay.semester1Start) ? String(ay.semester1Start).trim() : defAy.semester1Start,
+    semester1End: isIsoDateKey(ay.semester1End) ? String(ay.semester1End).trim() : defAy.semester1End,
+    semester2Start: isIsoDateKey(ay.semester2Start) ? String(ay.semester2Start).trim() : defAy.semester2Start,
+    semester2End: isIsoDateKey(ay.semester2End) ? String(ay.semester2End).trim() : defAy.semester2End
+  };
+
   merged.schoolHolidays = normalizeSchoolHolidays(merged.schoolHolidays);
 
   return merged;

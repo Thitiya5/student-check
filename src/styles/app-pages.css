@@ -2282,6 +2282,68 @@
   font-size: 0.86rem;
 }
 
+.points-score-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.75rem;
+}
+
+.points-score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.points-score-table th,
+.points-score-table td {
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in oklab, var(--primary) 8%, var(--border-glass));
+  white-space: nowrap;
+}
+
+.points-score-table th {
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+  background: color-mix(in oklab, var(--primary) 4%, transparent);
+}
+
+.points-score-table__row--cs {
+  background: color-mix(in oklab, var(--danger, #e53935) 6%, transparent);
+}
+
+.points-score-table__score strong {
+  font-size: 1rem;
+}
+
+.points-score-table__ded {
+  color: var(--danger, #c62828);
+}
+
+.points-score-table__pos {
+  color: var(--success, #2e7d32);
+}
+
+.points-score-table__cs-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: color-mix(in oklab, var(--danger, #e53935) 14%, transparent);
+  color: var(--danger, #c62828);
+}
+
+.points-score-table__profile-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--primary, #7c4dff);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+}
+
 .points-report-behavior-hint {
   margin: 0 0 0.75rem;
   padding: 0.55rem 0.75rem;
