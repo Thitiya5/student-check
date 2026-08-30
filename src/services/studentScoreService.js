@@ -5,6 +5,12 @@ import {
   computeParentMeetingRisk
 } from '../utils/pointCalculations.js';
 import { dedupeRecordsByDate, getSemesterDateRange } from '../utils/studentAttendanceSummary.js';
+import {
+  filterScoreReportsToOfficialRoster,
+  isTestStudentRecord,
+  loadOfficialRosterForClassKeys
+} from '../utils/studentRosterFilter.js';
+import { fetchStudentsByClass } from './studentsService.js';
 import { getStartingScore, getParentMeetingThresholdPercent, getCommunityServiceThreshold } from './appSettingsService.js';
 import { querySemesterAttendanceForSession } from './attendanceService.js';
 import { queryPointsInRangeForSession, queryClassPointsInRange } from './studentPointsService.js';
@@ -225,24 +231,31 @@ export function summarizeDeductedReportsByClass(reports, txnByClass = new Map())
  * @param {Array<{ student_id: string }>} transactions
  * @param {Array<{ student_id: string, first_name?: string, last_name?: string, student_name?: string }>} [roster]
  */
-export function buildClassScoreReports(attendanceRows, transactions, roster = []) {
+export function buildClassScoreReports(attendanceRows, transactions, roster = [], opts = {}) {
   const attByStudent = groupAttendanceByStudent(attendanceRows);
   const txnByStudent = groupTransactionsByStudent(transactions);
+  const officialRosterOnly = opts.officialRosterOnly !== false && roster.length > 0;
 
   /** @type {Map<string, { student_id: string, student_name?: string }>} */
   const names = new Map();
   for (const s of roster) {
+    if (isTestStudentRecord(s)) continue;
     names.set(String(s.student_id), s);
   }
-  for (const row of attendanceRows) {
-    if (!names.has(row.student_id)) names.set(row.student_id, row);
-  }
-  for (const row of transactions) {
-    if (!names.has(row.student_id)) names.set(row.student_id, row);
+  if (!officialRosterOnly) {
+    for (const row of attendanceRows) {
+      if (isTestStudentRecord(row)) continue;
+      if (!names.has(row.student_id)) names.set(row.student_id, row);
+    }
+    for (const row of transactions) {
+      if (isTestStudentRecord(row)) continue;
+      if (!names.has(row.student_id)) names.set(row.student_id, row);
+    }
   }
 
   const reports = [];
   for (const [studentId, meta] of names) {
+    if (isTestStudentRecord({ ...meta, studentId })) continue;
     const studentAtt = attByStudent.get(studentId) || [];
     const name =
       String(meta.student_name ?? '').trim() ||
@@ -419,7 +432,18 @@ async function fetchSemesterScoreReportsForSession(session, refDate = getTodayDa
   }
 
   const txnRows = await loadSemesterPointTransactions(session, range, attRows);
-  const reports = buildClassScoreReports(attRows, txnRows);
+  const classKeys = [
+    ...new Set(
+      [...attRows, ...txnRows]
+        .map((r) => String(r.class || '').trim())
+        .filter(Boolean)
+    )
+  ];
+  const roster = await loadOfficialRosterForClassKeys(classKeys, fetchStudentsByClass);
+  const reports = filterScoreReportsToOfficialRoster(
+    buildClassScoreReports(attRows, txnRows, roster, { officialRosterOnly: roster.length > 0 }),
+    roster
+  );
   const txnByClass = summarizeTransactionsByClass(txnRows);
   const byClass = mergeTransactionOnlyClasses(
     summarizeScoreReportsByClass(reports, txnByClass),

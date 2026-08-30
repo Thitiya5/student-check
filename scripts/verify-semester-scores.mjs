@@ -13,8 +13,13 @@ import {
   filterCommunityServiceReports,
   requiresCommunityService,
   filterScoreReports,
-  sortScoreReportsByClassThenScore
+  sortScoreReportsByClassThenScore,
+  buildClassScoreReports
 } from '../src/services/studentScoreService.js';
+import {
+  isTestStudentRecord,
+  filterScoreReportsToOfficialRoster
+} from '../src/utils/studentRosterFilter.js';
 import { shouldAutoLoadDashboardScores } from '../src/pages/dashboard.js';
 import { getHomeroomClassKeys, isSchoolWideViewSession } from '../src/services/teacherAuth.js';
 
@@ -113,5 +118,27 @@ assert.equal(shouldAutoLoadDashboardScores(adminSession), false);
 assert.equal(shouldAutoLoadDashboardScores(homeroomSession), true);
 assert.equal(isSchoolWideViewSession(adminSession), true);
 assert.equal(getHomeroomClassKeys(homeroomSession).length, 1);
+
+assert.equal(isTestStudentRecord({ student_name: 'นักเรียนทดสอบ' }), true);
+assert.equal(isTestStudentRecord({ student_id: 'TEST01' }), true);
+assert.equal(isTestStudentRecord({ student_name: 'สมชาย ใจดี', student_id: '12345' }), false);
+
+const ghostReports = buildClassScoreReports(
+  [{ student_id: 'GHOST', student_name: 'นักเรียนทดสอบ', class: 'M1/1', attendanceDate: '2026-06-01', status: 'present' }],
+  [{ student_id: 'GHOST', student_name: 'นักเรียนทดสอบ', class: 'M1/1', points: -5, category: 'attendance' }],
+  [{ student_id: 'REAL1', first_name: 'สม', last_name: 'ชาย', class: 'M1/1' }],
+  { officialRosterOnly: true }
+);
+assert.equal(ghostReports.length, 1);
+assert.equal(ghostReports[0].studentId, 'REAL1');
+
+const filteredOfficial = filterScoreReportsToOfficialRoster(
+  [
+    { studentId: 'REAL1', studentName: 'สม ชาย' },
+    { studentId: 'GHOST', studentName: 'นักเรียนทดสอบ' }
+  ],
+  [{ student_id: 'REAL1', first_name: 'สม', last_name: 'ชาย' }]
+);
+assert.deepEqual(filteredOfficial.map((r) => r.studentId), ['REAL1']);
 
 console.log('semester-scores: all checks passed');
